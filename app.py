@@ -40,13 +40,14 @@ def main():
                 "--index-url", "https://download.pytorch.org/whl/cpu"
             ], check=False)
             
-            # Install other training dependencies
+            # Install other training dependencies with compatible versions
             subprocess.run([
                 sys.executable, "-m", "pip", "install", "--quiet",
                 "transformers>=4.30.0",
                 "diffusers>=0.20.0", 
                 "huggingface_hub>=0.16.4",
-                "accelerate>=0.20.3"
+                "accelerate>=0.20.3",
+                "safetensors<0.4.0"  # Use older safetensors without torch.uint64
             ], check=False)
         
         print("✅ Training dependencies installed successfully")
@@ -57,7 +58,7 @@ def main():
     subprocess.run([
         sys.executable, "facefusion.py", "run",
         "--execution-providers", "cuda",
-        "--ui-layouts", "default", "training"
+        "--ui-layouts", "default"
     ], check=True)
 
 if __name__ == "__main__":

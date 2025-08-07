@@ -2,7 +2,18 @@ import gradio
 
 from facefusion import state_manager
 from facefusion.uis.components import about, common_options, memory, terminal
-from facefusion.uis.components import dataset_manager, model_trainer, training_options, training_progress
+# Import training components with fallback
+try:
+    from facefusion.uis.components import dataset_manager, model_trainer, training_options, training_progress, TRAINING_AVAILABLE
+except ImportError:
+    TRAINING_AVAILABLE = False
+    # Create dummy components
+    class DummyComponent:
+        def render(self): 
+            return gradio.HTML("⚠️ Training components unavailable due to dependency conflicts")
+        def listen(self): pass
+    
+    dataset_manager = model_trainer = training_options = training_progress = DummyComponent()
 
 def pre_check() -> bool:
 	return True
