@@ -1,6 +1,6 @@
-metadata
-
-title: Facefusion3.0.0.1
+cat > README.md << 'EOF'
+---
+title: Facefusion3.1
 emoji: 💻
 colorFrom: green
 colorTo: red
@@ -9,7 +9,8 @@ sdk_version: 5.4.0
 app_file: app.py
 pinned: false
 license: mit
-short_description: faceswao
+short_description: faceswap
+---
 
 FaceFusion
 ==========
