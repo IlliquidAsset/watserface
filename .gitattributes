@@ -1,0 +1,2 @@
+.github/preview.png filter=lfs diff=lfs merge=lfs -text
+facefusion.ico filter=lfs diff=lfs merge=lfs -text
