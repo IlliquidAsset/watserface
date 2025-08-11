@@ -2,6 +2,7 @@ import gradio
 
 from facefusion import state_manager
 from facefusion.uis.components import about, common_options, execution, face_detector, face_landmarker, face_masker, face_selector, instant_runner, job_manager, job_runner, memory, output, output_options, processors, smart_preview, source, target, terminal, ui_workflow
+from facefusion.uis.components import enhanced_source, enhanced_target, progress_tracker, help_system, error_handler
 
 
 def pre_check() -> bool:
@@ -9,87 +10,157 @@ def pre_check() -> bool:
 
 
 def render() -> gradio.Blocks:
-    """Render streamlined 4-step workflow layout"""
-    with gradio.Blocks() as layout:
+    """Render streamlined 4-step workflow layout with enhanced UX"""
+    with gradio.Blocks(
+        css_paths=["facefusion/uis/assets/enhanced_styles.css"],
+        js_paths=["facefusion/uis/assets/keyboard_navigation.js"]
+    ) as layout:
+        # Initialize error handling
+        error_handler.setup_error_handling()
+        
         # Header
         about.render()
+        
+        # Error display (initially hidden)
+        error_handler.render_error_display()
+        
+        # Guided tour for new users
+        guided_tour_panel, tour_dismiss = help_system.render_guided_tour()
         
         # Main workflow tabs
         with gradio.Tabs() as main_tabs:
             # Step 1: Upload
             with gradio.Tab("📁 Upload", id="upload_tab"):
+                # Help panel for upload section
+                help_system.HelpSystem.render_help_panel("upload")
+                
                 with gradio.Row():
                     with gradio.Column(scale=1):
-                        gradio.Markdown(
-                            """
-                            ## Step 1: Upload Your Media
-                            
-                            **Source**: The face you want to use (person's photo)
-                            **Target**: The video or image where you want to place the face
-                            
-                            💡 **Tips**: 
-                            - Use clear, well-lit photos for best results
-                            - Front-facing source images work best
-                            - Supported formats: JPG, PNG, MP4, MOV
-                            """
-                        )
+                        # Empty state walkthrough
+                        with gradio.Column(visible=True) as upload_empty_state:
+                            gradio.Markdown(
+                                """
+                                ## 🚀 Let's Get Started!
+                                
+                                **Step 1: Upload Your Media**
+                                
+                                1. **📸 Source Image**: Upload a clear photo of the person whose face you want to use
+                                2. **🎯 Target Media**: Upload the video or image where you want to place the face
+                                
+                                ### 💡 Pro Tips for Best Results:
+                                - ✅ Use front-facing, well-lit photos
+                                - ✅ Higher resolution images work better
+                                - ✅ Avoid sunglasses, masks, or extreme angles
+                                - ✅ Keep test videos under 30 seconds
+                                
+                                **Ready? Start by uploading your source image below! ⬇️**
+                                """,
+                                elem_id="upload_empty_state_guide"
+                            )
+                    
                     with gradio.Column(scale=2):
                         with gradio.Row():
                             with gradio.Column():
-                                source.render()
+                                enhanced_source.render()
                             with gradio.Column():
-                                target.render()
+                                enhanced_target.render()
+                        
+                        # System requirements check
+                        system_warnings = gradio.Markdown(
+                            "",
+                            elem_id="system_warnings",
+                            visible=False
+                        )
                         
                         next_to_preview_button = gradio.Button(
                             value="➡️ Next: Generate Previews",
                             variant="primary",
-                            size="lg"
+                            size="lg",
+                            interactive=False
                         )
             
             # Step 2: Preview Selection  
             with gradio.Tab("🔍 Preview", id="preview_tab"):
+                # Help panel for preview section
+                help_system.HelpSystem.render_help_panel("preview")
+                
                 with gradio.Row():
                     with gradio.Column(scale=1):
-                        gradio.Markdown(
-                            """
-                            ## Step 2: Choose Your Quality
-                            
-                            See 3 preview options and pick the one you like best.
-                            Each option balances speed vs quality differently.
-                            
-                            💡 **Tips**:
-                            - Fast: Great for testing and quick results
-                            - Balanced: Best overall choice for most users  
-                            - Quality: Slower but highest quality output
-                            """
-                        )
+                        # Preview empty state
+                        with gradio.Column(visible=True) as preview_empty_state:
+                            gradio.Markdown(
+                                """
+                                ## 🎯 Smart Quality Selection
+                                
+                                **Choose your perfect balance of speed vs quality:**
+                                
+                                ### 🚀 Fast Preset
+                                - ⏱️ **Time**: ~15 seconds
+                                - 🎯 **Best for**: Testing, multiple iterations
+                                - 📊 **Quality**: Good for previews
+                                
+                                ### ⚖️ Balanced Preset ⭐ *Recommended*
+                                - ⏱️ **Time**: ~45 seconds  
+                                - 🎯 **Best for**: Most users, everyday use
+                                - 📊 **Quality**: High quality with enhancement
+                                
+                                ### ✨ Quality Preset
+                                - ⏱️ **Time**: ~90+ seconds
+                                - 🎯 **Best for**: Final outputs, professional work
+                                - 📊 **Quality**: Maximum quality, all features
+                                
+                                **New to face swapping? Start with Balanced!**
+                                """,
+                                elem_id="preview_empty_state_guide"
+                            )
+                    
                     with gradio.Column(scale=3):
                         smart_preview.render()
                         
                         next_to_export_button = gradio.Button(
                             value="➡️ Next: Process Full Media",
                             variant="primary",
-                            size="lg"
+                            size="lg",
+                            interactive=False
                         )
             
             # Step 3: Export/Processing
             with gradio.Tab("⚡ Process", id="process_tab"):
+                # Help panel for processing section
+                help_system.HelpSystem.render_help_panel("process")
+                
                 with gradio.Row():
                     with gradio.Column(scale=1):
-                        gradio.Markdown(
-                            """
-                            ## Step 3: Process & Download
-                            
-                            Generate your final result using the settings you selected.
-                            Processing time depends on your chosen quality preset.
-                            
-                            💡 **Tips**:
-                            - Processing runs on GPU when available
-                            - Larger videos take longer to process
-                            - You can monitor progress below
-                            """
-                        )
+                        # Processing empty state
+                        with gradio.Column(visible=True) as process_empty_state:
+                            gradio.Markdown(
+                                """
+                                ## ⚡ Ready to Process!
+                                
+                                **Your settings are configured. Here's what happens next:**
+                                
+                                ### Processing Steps:
+                                1. 🔍 **Face Detection** - Locate faces in media
+                                2. 🎯 **Face Analysis** - Extract facial features  
+                                3. 🔄 **Face Swapping** - Replace target faces
+                                4. ✨ **Enhancement** - Improve quality (if enabled)
+                                5. 📦 **Output** - Generate final file
+                                
+                                ### ⏱️ Time Estimates:
+                                - **GPU**: 5-10x faster processing
+                                - **Video Length**: Longer = more time
+                                - **Resolution**: Higher = slower but better
+                                - **Your Preset**: Affects speed and quality
+                                
+                                **Click Process when ready!**
+                                """,
+                                elem_id="process_empty_state_guide"
+                            )
+                    
                     with gradio.Column(scale=2):
+                        # Enhanced progress tracking
+                        progress_tracker.render()
+                        
                         # Output settings (simplified)
                         with gradio.Accordion("📤 Output", open=True):
                             output.render()
@@ -100,24 +171,42 @@ def render() -> gradio.Blocks:
                             instant_runner.render()
                             job_runner.render()
                         
-                        # Terminal for progress
-                        with gradio.Accordion("📊 Progress", open=False):
+                        # Terminal for detailed progress
+                        with gradio.Accordion("📊 Detailed Progress", open=False):
                             terminal.render()
             
             # Step 4: Advanced/Training (for power users)
             with gradio.Tab("🎓 Advanced", id="advanced_tab"):
+                # Help panel for advanced section
+                help_system.HelpSystem.render_help_panel("advanced")
+                
                 with gradio.Row():
                     with gradio.Column(scale=1):
-                        gradio.Markdown(
-                            """
-                            ## Advanced Settings & Training
-                            
-                            **Fine-tune settings** or **train custom models** for specialized use cases.
-                            
-                            ⚠️ **Note**: These are advanced features.
-                            Most users should stick to the Preview tab presets.
-                            """
-                        )
+                        # Advanced empty state
+                        with gradio.Column(visible=True) as advanced_empty_state:
+                            gradio.Markdown(
+                                """
+                                ## 🎓 Advanced Features
+                                
+                                **For Power Users & Fine-tuning**
+                                
+                                ### 🔧 When to Use Advanced Settings:
+                                - Fine-tuning for specific use cases
+                                - Handling difficult source images
+                                - Professional/commercial projects
+                                - Performance optimization
+                                - Experimental features
+                                
+                                ### ⚠️ Important Notes:
+                                - **Beginners**: Stick to preset options in Preview tab
+                                - **Experts**: These settings override presets
+                                - **Training**: Custom models (coming in Phase 4)
+                                - **Support**: Advanced features have limited guidance
+                                
+                                **Most users get better results with presets!**
+                                """,
+                                elem_id="advanced_empty_state_guide"
+                            )
                     
                     with gradio.Column(scale=3):
                         # Advanced processor settings (collapsed by default)
@@ -179,7 +268,15 @@ def render() -> gradio.Blocks:
 def listen() -> None:
     """Set up event listeners for streamlined layout"""
     
-    # Import components that need listeners
+    # Enhanced components listeners
+    enhanced_source.listen()
+    enhanced_target.listen()
+    smart_preview.listen()
+    progress_tracker.listen()
+    error_handler.listen_error_events()
+    help_system.setup_help_system_listeners()
+    
+    # Original components that need listeners
     processors.listen()
     execution.listen()
     memory.listen()
@@ -196,7 +293,6 @@ def listen() -> None:
     face_masker.listen()
     face_detector.listen()
     face_landmarker.listen()
-    smart_preview.listen()
     
     # Get navigation components
     from facefusion.uis.core import get_ui_component
