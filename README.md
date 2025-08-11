@@ -3,18 +3,35 @@ title: Facefusion3.1
 emoji: 💻
 colorFrom: green
 colorTo: red
-sdk: gradio
-sdk_version: 5.4.0
-app_file: app.py
+sdk: docker
+app_port: 8080
 pinned: false
 license: mit
 short_description: faceswap
+startup_duration_timeout: 5m
+custom_headers:
+  cross-origin-embedder-policy: require-corp
+  cross-origin-opener-policy: same-origin
 ---
 
 FaceFusion
 ==========
 
 > Industry leading face manipulation platform with dataset training capabilities.
+
+## 🚀 Development Environment (HuggingFace Spaces)
+
+### Quick Start
+1. **Launch**: HuggingFace Spaces automatically runs `bash dev_start.sh`
+2. **Authenticate**: Run `claude-code auth login` in VS Code terminal
+3. **Organization ID**: `7d37921e-6314-4b53-a02d-7ea9040b3afb`
+4. **Access VS Code**: Available on port 8080 after startup
+
+### Development Setup Details
+- **Environment**: VS Code web server with Claude Code CLI
+- **Installation**: Automatic (Node.js, code-server, Claude Code)
+- **Session Tracking**: Progress saved in `.claude-session/` directory
+- **Primary Documentation**: See `prd.MD` for complete development plan
 
 ## 🆕 New Features
 
