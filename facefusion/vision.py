@@ -1,20 +1,61 @@
 import math
-from functools import lru_cache
+from collections import OrderedDict
 from typing import List, Optional, Tuple
 
 import cv2
 import numpy
+import psutil
 from cv2.typing import Size
 
 import facefusion.choices
 from facefusion.common_helper import is_windows
 from facefusion.filesystem import get_file_extension, is_image, is_video
-from facefusion.thread_helper import thread_semaphore
+from facefusion.thread_helper import thread_lock, thread_semaphore
 from facefusion.types import Duration, Fps, Orientation, Resolution, VisionFrame
 from facefusion.video_manager import get_video_capture
 
 
-@lru_cache()
+class MemoryAwareLruCache:
+
+	def __init__(self, func, max_memory : Optional[int] = None):
+		self.func = func
+		self.cache = OrderedDict()
+		self.current_memory_usage = 0
+		self.max_memory = max_memory if max_memory else int(psutil.virtual_memory().total * 0.25)
+
+	def __call__(self, *args, **kwargs):
+		with thread_lock():
+			key = args + tuple(sorted(kwargs.items()))
+			if key in self.cache:
+				self.cache.move_to_end(key)
+				return self.cache[key]
+
+		result = self.func(*args, **kwargs)
+
+		if result is not None:
+			size = result.nbytes if hasattr(result, 'nbytes') else 0
+			with thread_lock():
+				if key in self.cache:
+					self.cache.move_to_end(key)
+					return self.cache[key]
+
+				while self.current_memory_usage + size > self.max_memory and self.cache:
+					_, evicted_value = self.cache.popitem(last = False)
+					evicted_size = evicted_value.nbytes if hasattr(evicted_value, 'nbytes') else 0
+					self.current_memory_usage -= evicted_size
+
+				if self.current_memory_usage + size <= self.max_memory:
+					self.cache[key] = result
+					self.current_memory_usage += size
+		return result
+
+	def cache_clear(self):
+		with thread_lock():
+			self.cache.clear()
+			self.current_memory_usage = 0
+
+
+@MemoryAwareLruCache
 def read_static_image(image_path : str) -> Optional[VisionFrame]:
 	return read_image(image_path)
 
