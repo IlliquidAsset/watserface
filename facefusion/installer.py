@@ -46,11 +46,12 @@ def run(program : ArgumentParser) -> None:
 		sys.exit(1)
 
 	with open('requirements.txt') as file:
-
 		for line in file.readlines():
+			if '#' in line:
+				line = line.split('#')[0]
 			__line__ = line.strip()
-			if not __line__.startswith('onnxruntime'):
-				subprocess.call([ shutil.which('pip'), 'install', line, '--force-reinstall' ])
+			if __line__ and not __line__.startswith('onnxruntime'):
+				subprocess.call([ shutil.which('pip'), 'install', __line__, '--force-reinstall' ])
 
 	if args.onnxruntime == 'rocm':
 		python_id = 'cp' + str(sys.version_info.major) + str(sys.version_info.minor)

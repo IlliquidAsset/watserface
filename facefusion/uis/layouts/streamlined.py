@@ -322,5 +322,5 @@ def run(ui: gradio.Blocks) -> None:
         inbrowser=state_manager.get_item('open_browser'),
         share=False,
         server_name="0.0.0.0",
-        server_port=7860
+        server_port=state_manager.get_item('server_port')
     )
