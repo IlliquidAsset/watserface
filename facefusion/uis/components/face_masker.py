@@ -39,12 +39,14 @@ def render() -> None:
 		FACE_OCCLUDER_MODEL_DROPDOWN = gradio.Dropdown(
 			label = wording.get('uis.face_occluder_model_dropdown'),
 			choices = facefusion.choices.face_occluder_models,
-			value = state_manager.get_item('face_occluder_model')
+			value = state_manager.get_item('face_occluder_model'),
+			info = wording.get('help.face_occluder_model')
 		)
 		FACE_PARSER_MODEL_DROPDOWN = gradio.Dropdown(
 			label = wording.get('uis.face_parser_model_dropdown'),
 			choices = facefusion.choices.face_parser_models,
-			value = state_manager.get_item('face_parser_model')
+			value = state_manager.get_item('face_parser_model'),
+			info = wording.get('help.face_parser_model')
 		)
 	FACE_MASK_TYPES_CHECKBOX_GROUP = gradio.CheckboxGroup(
 		label = wording.get('uis.face_mask_types_checkbox_group'),
