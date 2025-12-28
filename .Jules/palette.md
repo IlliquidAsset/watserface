@@ -1,0 +1,3 @@
+## 2024-05-23 - Gradio Component Tooltips
+**Learning:** Gradio components support an `info` parameter for tooltips/help text, but `RangeSlider` (from `gradio_rangeslider`) does not seem to support it or it's not standard. Also, strings with placeholders in `wording.py` (e.g. `{choices}`) cannot be used directly in `info` without formatting.
+**Action:** When adding tooltips, check if the component type supports `info`. Avoid using dynamic strings from `wording.py` for static `info` parameters unless logic is added to format them. Verify that the keys exist in `wording.py` and are static strings.
