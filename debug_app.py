@@ -136,7 +136,7 @@ def main():
             from facefusion import core
             logger.info("✅ FaceFusion core imported")
             
-            from facefusion.uis.layouts import default, training
+            from facefusion.uis.layouts import swap, training
             logger.info("✅ UI layouts imported")
             
             # Test torch import
@@ -156,7 +156,7 @@ def main():
             launch_command = [
                 sys.executable, "facefusion.py", "run",
                 "--execution-providers", "cuda",
-                "--ui-layouts", "default", "training"
+                "--ui-layouts", "swap", "training"
             ]
             
             logger.info(f"Launch command: {' '.join(launch_command)}")

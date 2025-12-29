@@ -28,44 +28,31 @@ def start_identity_training(
 	epochs: int,
 	source_files: Any,
 	progress=gradio.Progress()
-) -> str:
+):
 	"""
 	Train an identity model (InstantID) from source files.
-
-	Args:
-		model_name: Name for the trained model
-		epochs: Number of training epochs
-		source_files: Uploaded source file(s)
-		progress: Gradio Progress object
-
-	Returns:
-		Status message
 	"""
 	global _training_stopped
 	_training_stopped = False
+	telemetry = {'status': 'initializing'}
 
 	try:
-		# Validation
 		if not model_name:
-			return "❌ Error: Please enter a model name."
-
+			yield "❌ Error: Please enter a model name.", telemetry
+			return
 		if not source_files:
-			return "❌ Error: No source files uploaded."
+			yield "❌ Error: No source files uploaded.", telemetry
+			return
 
 		logger.info(f"Starting Identity Training for '{model_name}'...", __name__)
 
-		# Prepare dataset path
 		dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_identity')
-
-		# Clear existing dataset
 		if os.path.exists(dataset_path):
 			shutil.rmtree(dataset_path)
 		os.makedirs(dataset_path, exist_ok=True)
 
-		# Convert source files to list of paths
 		source_list = source_files if isinstance(source_files, list) else [source_files]
 		source_paths = []
-
 		for source_file in source_list:
 			if hasattr(source_file, 'name'):
 				source_paths.append(source_file.name)
@@ -74,39 +61,37 @@ def start_identity_training(
 
 		logger.info(f"Extracting dataset from {len(source_paths)} source file(s)...", __name__)
 
-		# Step 1: Extract dataset with MediaPipe landmarks
-		progress(0.1, desc="Extracting frames and landmarks...")
-
-		result = extract_training_dataset(
+		# Step 1: Extraction
+		last_stats = {}
+		for stats in extract_training_dataset(
 			source_paths=source_paths,
 			output_dir=dataset_path,
-			frame_interval=2,  # Extract every 2nd frame for higher density
-			max_frames=1000,  # Increase limit significantly
+			frame_interval=2,
+			max_frames=1000,
 			progress=progress
-		)
+		):
+			if _training_stopped:
+				yield "Training Stopped.", telemetry
+				return
+			telemetry.update(stats)
+			telemetry['status'] = 'Extracting'
+			last_stats = stats
+			yield f"Extracting... {stats.get('frames_extracted', 0)} frames", telemetry
 
-		if result['frames_extracted'] == 0:
-			return "❌ Error: No frames with valid faces detected. Please use images/videos with clear faces."
+		if last_stats.get('frames_extracted', 0) == 0:
+			yield "❌ Error: No faces found.", telemetry
+			return
 
-		logger.info(
-			f"Extracted {result['frames_extracted']} frames with {result['landmarks_saved']} landmarks",
-			__name__
-		)
-
-		# Step 2: Apply temporal smoothing
-		progress(0.3, desc="Applying temporal smoothing...")
-
-		smooth_result = apply_smoothing_to_dataset(dataset_path, window_length=11)
-
-		logger.info(
-			f"Smoothed {smooth_result['samples_smoothed']} samples across {smooth_result['sequences_smoothed']} sequences",
-			__name__
-		)
+		# Step 2: Smoothing
+		telemetry['status'] = 'Smoothing'
+		yield "Applying smoothing...", telemetry
+		apply_smoothing_to_dataset(dataset_path)
 
 		# Step 3: Train InstantID model
-		progress(0.4, desc="Starting InstantID training...")
-
-		onnx_path = train_instantid_model(
+		telemetry['status'] = 'Training'
+		onnx_path = ""
+		
+		for status_msg, train_stats in train_instantid_model(
 			dataset_dir=dataset_path,
 			model_name=model_name,
 			epochs=epochs,
@@ -114,15 +99,35 @@ def start_identity_training(
 			learning_rate=0.0001,
 			save_interval=max(10, epochs // 5),
 			progress=progress
-		)
-
-		# Copy to assets folder for persistence and detection
+		):
+			if _training_stopped:
+				yield "Training Stopped.", telemetry
+				return
+			
+			if 'model_path' in train_stats:
+				onnx_path = train_stats['model_path']
+			else:
+				telemetry.update(train_stats)
+				yield status_msg, telemetry
+	
+		if not onnx_path:
+			yield "❌ Training failed to produce model.", telemetry
+			return
+	
+		# Copy to assets
 		trained_models_dir = resolve_relative_path('../.assets/models/trained')
 		if not os.path.exists(trained_models_dir):
 			os.makedirs(trained_models_dir, exist_ok=True)
 		
+		
 		final_model_path = os.path.join(trained_models_dir, os.path.basename(onnx_path))
 		shutil.copy(onnx_path, final_model_path)
+
+		# Copy checkpoint for resuming
+		checkpoint_src = os.path.splitext(onnx_path)[0] + '.pth'
+		checkpoint_dst = os.path.splitext(final_model_path)[0] + '.pth'
+		if os.path.exists(checkpoint_src):
+			shutil.copy(checkpoint_src, checkpoint_dst)
 
 		# Generate hash file to prevent deletion by validator
 		import zlib
@@ -135,14 +140,15 @@ def start_identity_training(
 			f.write(model_hash)
 
 		logger.info(f"Identity model trained successfully and saved to: {final_model_path}", __name__)
-
-		return f"✅ Identity Model '{model_name}' trained successfully!\n📁 Saved to: {final_model_path}\n\n🔄 Refresh the app or click the new refresh button in Swap tab to use it."
+		telemetry['status'] = 'Complete'
+		telemetry['model_path'] = final_model_path
+		yield f"✅ Identity Model '{model_name}' trained successfully!\n📁 Saved to: {final_model_path}\n\n🔄 Refresh the app or click the new refresh button in Swap tab to use it.", telemetry
 
 	except Exception as e:
 		logger.error(f"Identity training failed: {e}", __name__)
 		import traceback
 		traceback.print_exc()
-		return f"❌ Training failed: {str(e)}"
+		yield f"❌ Training failed: {str(e)}", telemetry
 
 
 def start_occlusion_training(

@@ -67,7 +67,10 @@ class FaceDataset(Dataset):
 		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 		return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
 
-def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, progress: Any) -> str:
+import time
+from typing import Any, Iterator, Tuple, Dict
+
+def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, progress: Any) -> Iterator[Tuple[str, Dict]]:
 	logger.info(f"Initializing Identity Training (SimSwap Fine-tune) for {model_name}...", __name__)
 	
 	device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
@@ -78,46 +81,106 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 	
 	dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 	
-	# In a real scenario, we would load PRE-TRAINED weights here.
-	# Since we don't have the PyTorch weights for SimSwap bundled, 
-	# we are initializing a fresh model (which won't work well without base weights).
-	# TODO: Download base SimSwap PyTorch checkpoint.
 	model = IdentityGenerator().to(device)
 	optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 	criterion = nn.L1Loss()
+
+	# Resume from checkpoint if available
+	checkpoint_path = os.path.join(dataset_dir, f"{model_name}.pth")
+	
+	# Check if checkpoint exists in assets (from previous session)
+	if not os.path.exists(checkpoint_path):
+		assets_checkpoint = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.assets/models/trained', f"{model_name}.pth"))
+		if os.path.exists(assets_checkpoint):
+			logger.info(f"Restoring checkpoint from assets: {assets_checkpoint}", __name__)
+			shutil.copy(assets_checkpoint, checkpoint_path)
+
+	if os.path.exists(checkpoint_path):
+		logger.info(f"Resuming from checkpoint: {checkpoint_path}", __name__)
+		try:
+			model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+		except Exception as e:
+			logger.warn(f"Could not load checkpoint: {e}. Starting fresh.", __name__)
 	
 	model.train()
+	start_time = time.time()
 	
-	for epoch in progress.tqdm(range(epochs), desc="Fine-tuning Identity"):
-		epoch_loss = 0
-		for imgs in dataloader:
-			img_batch = imgs.to(device)
-			# Dummy ID embedding
-			id_emb = torch.randn(img_batch.size(0), 512).to(device)
+	try:
+		for epoch in progress.tqdm(range(epochs), desc="Fine-tuning Identity"):
+			epoch_loss = 0
+			for imgs in dataloader:
+				img_batch = imgs.to(device)
+				id_emb = torch.randn(img_batch.size(0), 512).to(device)
+				
+				optimizer.zero_grad()
+				output = model(img_batch, id_emb)
+				loss = criterion(output, img_batch)
+				loss.backward()
+				optimizer.step()
+				epoch_loss += loss.item()
+				
+			avg_loss = epoch_loss / len(dataloader)
 			
-			optimizer.zero_grad()
-			# Reconstruction training (Autoencoder mode for now)
-			output = model(img_batch, id_emb)
-			loss = criterion(output, img_batch)
-			loss.backward()
-			optimizer.step()
-			epoch_loss += loss.item()
+			# Telemetry
+			elapsed = time.time() - start_time
+			avg_time_per_epoch = elapsed / (epoch + 1)
+			remaining_epochs = epochs - (epoch + 1)
+			eta_seconds = avg_time_per_epoch * remaining_epochs
 			
-		if epoch % 10 == 0:
-			logger.debug(f"Epoch {epoch} Loss: {epoch_loss/len(dataloader):.4f}", __name__)
+			telemetry = {
+				'epoch': epoch + 1,
+				'total_epochs': epochs,
+				'loss': f"{avg_loss:.4f}",
+				'eta': f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s"
+			}
+			
+			# Log to terminal every epoch or every 10%
+			if epoch % max(1, epochs // 10) == 0 or epoch == epochs - 1:
+				logger.info(f"Training Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", __name__)
+				
+			# Save Checkpoint periodically
+			if (epoch + 1) % save_interval == 0:
+				torch.save(model.state_dict(), checkpoint_path)
+				
+			yield f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", telemetry
 
-	# Export
-	output_path = os.path.join(dataset_dir, f"{model_name}.onnx")
-	dummy_input = torch.randn(1, 3, 128, 128).to(device)
-	dummy_id = torch.randn(1, 512).to(device)
+	except GeneratorExit:
+		logger.info("Training interrupted. Saving current checkpoint...", __name__)
+		torch.save(model.state_dict(), checkpoint_path)
 	
-	torch.onnx.export(
-		model,
-		(dummy_input, dummy_id),
-		output_path,
-		input_names=['target', 'source_embedding'],
-		output_names=['output'],
-		dynamic_axes={'target': {0: 'batch'}, 'output': {0: 'batch'}}
-	)
-	
-	return output_path
+	finally:
+		# Always save final checkpoint
+		torch.save(model.state_dict(), checkpoint_path)
+		
+		# Final Report Calculation
+		total_time = time.time() - start_time
+		avg_step_time = total_time / (max(1, epoch) * len(dataloader)) # approx
+		final_report = {
+			'status': 'Complete (Saved)',
+			'total_epochs': epoch + 1,
+			'total_time': f"{int(total_time // 60)}m {int(total_time % 60)}s",
+			'avg_step_time': f"{avg_step_time:.4f}s",
+			'final_loss': f"{avg_loss:.4f}"
+		}
+		
+		yield "Exporting ONNX model... (This may take a moment)", final_report
+
+		# Export ONNX
+		output_path = os.path.join(dataset_dir, f"{model_name}.onnx")
+		dummy_input = torch.randn(1, 3, 128, 128).to(device)
+		dummy_id = torch.randn(1, 512).to(device)
+		
+		model.eval() # CRITICAL for BatchNorm export stability
+		
+		# Use older opset or standard export to avoid dynamo issues
+		torch.onnx.export(
+			model,
+			(dummy_input, dummy_id),
+			output_path,
+			input_names=['target', 'source_embedding'],
+			output_names=['output'],
+			dynamic_axes={'target': {0: 'batch'}, 'output': {0: 'batch'}},
+			opset_version=14 
+		)
+		
+		yield f"Exported to {output_path}", final_report

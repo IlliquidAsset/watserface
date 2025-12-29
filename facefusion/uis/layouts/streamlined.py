@@ -318,9 +318,7 @@ def listen() -> None:
 def run(ui: gradio.Blocks) -> None:
     """Launch the streamlined UI"""
     ui.launch(
-        favicon_path='facefusion.ico', 
         inbrowser=state_manager.get_item('open_browser'),
-        share=False,
-        server_name="0.0.0.0",
+        server_name=state_manager.get_item('server_name'),
         server_port=state_manager.get_item('server_port')
     )

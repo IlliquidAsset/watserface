@@ -9,6 +9,7 @@ from facefusion.types import FaceMaskArea, FaceMaskRegion, FaceMaskType, FaceOcc
 from facefusion.uis.core import register_ui_component
 
 FACE_OCCLUDER_MODEL_DROPDOWN : Optional[gradio.Dropdown] = None
+FACE_OCCLUDER_REFRESH_BUTTON : Optional[gradio.Button] = None
 FACE_PARSER_MODEL_DROPDOWN : Optional[gradio.Dropdown] = None
 FACE_MASK_TYPES_CHECKBOX_GROUP : Optional[gradio.CheckboxGroup] = None
 FACE_MASK_AREAS_CHECKBOX_GROUP : Optional[gradio.CheckboxGroup] = None
@@ -22,6 +23,7 @@ FACE_MASK_PADDING_LEFT_SLIDER : Optional[gradio.Slider] = None
 
 def render() -> None:
 	global FACE_OCCLUDER_MODEL_DROPDOWN
+	global FACE_OCCLUDER_REFRESH_BUTTON
 	global FACE_PARSER_MODEL_DROPDOWN
 	global FACE_MASK_TYPES_CHECKBOX_GROUP
 	global FACE_MASK_AREAS_CHECKBOX_GROUP
@@ -39,12 +41,20 @@ def render() -> None:
 		FACE_OCCLUDER_MODEL_DROPDOWN = gradio.Dropdown(
 			label = wording.get('uis.face_occluder_model_dropdown'),
 			choices = facefusion.choices.face_occluder_models,
-			value = state_manager.get_item('face_occluder_model')
+			value = state_manager.get_item('face_occluder_model'),
+			scale = 8
+		)
+		FACE_OCCLUDER_REFRESH_BUTTON = gradio.Button(
+			value = '🔄',
+			variant = 'secondary',
+			scale = 1,
+			elem_classes = [ 'ui_button_small' ]
 		)
 		FACE_PARSER_MODEL_DROPDOWN = gradio.Dropdown(
 			label = wording.get('uis.face_parser_model_dropdown'),
 			choices = facefusion.choices.face_parser_models,
-			value = state_manager.get_item('face_parser_model')
+			value = state_manager.get_item('face_parser_model'),
+			scale = 9
 		)
 	FACE_MASK_TYPES_CHECKBOX_GROUP = gradio.CheckboxGroup(
 		label = wording.get('uis.face_mask_types_checkbox_group'),
@@ -107,6 +117,7 @@ def render() -> None:
 				visible = has_box_mask
 			)
 	register_ui_component('face_occluder_model_dropdown', FACE_OCCLUDER_MODEL_DROPDOWN)
+	register_ui_component('face_occluder_refresh_button', FACE_OCCLUDER_REFRESH_BUTTON)
 	register_ui_component('face_parser_model_dropdown', FACE_PARSER_MODEL_DROPDOWN)
 	register_ui_component('face_mask_types_checkbox_group', FACE_MASK_TYPES_CHECKBOX_GROUP)
 	register_ui_component('face_mask_areas_checkbox_group', FACE_MASK_AREAS_CHECKBOX_GROUP)
@@ -120,6 +131,7 @@ def render() -> None:
 
 def listen() -> None:
 	FACE_OCCLUDER_MODEL_DROPDOWN.change(update_face_occluder_model, inputs = FACE_OCCLUDER_MODEL_DROPDOWN)
+	FACE_OCCLUDER_REFRESH_BUTTON.click(update_face_occluder_choices, outputs = [ FACE_OCCLUDER_MODEL_DROPDOWN ])
 	FACE_PARSER_MODEL_DROPDOWN.change(update_face_parser_model, inputs = FACE_PARSER_MODEL_DROPDOWN)
 	FACE_MASK_TYPES_CHECKBOX_GROUP.change(update_face_mask_types, inputs = FACE_MASK_TYPES_CHECKBOX_GROUP, outputs = [ FACE_MASK_TYPES_CHECKBOX_GROUP, FACE_MASK_AREAS_CHECKBOX_GROUP, FACE_MASK_REGIONS_CHECKBOX_GROUP, FACE_MASK_BLUR_SLIDER, FACE_MASK_PADDING_TOP_SLIDER, FACE_MASK_PADDING_RIGHT_SLIDER, FACE_MASK_PADDING_BOTTOM_SLIDER, FACE_MASK_PADDING_LEFT_SLIDER ])
 	FACE_MASK_AREAS_CHECKBOX_GROUP.change(update_face_mask_areas, inputs = FACE_MASK_AREAS_CHECKBOX_GROUP, outputs = FACE_MASK_AREAS_CHECKBOX_GROUP)
@@ -129,6 +141,20 @@ def listen() -> None:
 	face_mask_padding_sliders = [ FACE_MASK_PADDING_TOP_SLIDER, FACE_MASK_PADDING_RIGHT_SLIDER, FACE_MASK_PADDING_BOTTOM_SLIDER, FACE_MASK_PADDING_LEFT_SLIDER ]
 	for face_mask_padding_slider in face_mask_padding_sliders:
 		face_mask_padding_slider.release(update_face_mask_padding, inputs = face_mask_padding_sliders)
+
+
+def update_face_occluder_choices() -> gradio.Dropdown:
+	face_masker.create_static_model_set.cache_clear()
+	
+	trained_model_file_paths = resolve_file_paths(resolve_relative_path('../.assets/models/trained'))
+	if trained_model_file_paths:
+		for model_file_path in trained_model_file_paths:
+			model_name = get_file_name(model_file_path)
+			if model_name not in facefusion.choices.face_occluder_models:
+				if 'xseg' in model_name.lower() or 'occlusion' in model_name.lower() or 'mask' in model_name.lower():
+					facefusion.choices.face_occluder_models.append(model_name) #type:ignore
+
+	return gradio.Dropdown(choices = facefusion.choices.face_occluder_models)
 
 
 def update_face_occluder_model(face_occluder_model : FaceOccluderModel) -> gradio.Dropdown:

@@ -12,7 +12,7 @@ face_detector_set : FaceDetectorSet =\
 	'yolo_face': [ '640x640' ]
 }
 face_detector_models : List[FaceDetectorModel] = list(face_detector_set.keys())
-face_landmarker_models : List[FaceLandmarkerModel] = [ 'many', '2dfan4', 'peppa_wutz' ]
+face_landmarker_models : List[FaceLandmarkerModel] = [ 'many', '2dfan4', 'peppa_wutz', 'mediapipe' ]
 face_selector_modes : List[FaceSelectorMode] = [ 'many', 'one', 'reference' ]
 face_selector_orders : List[FaceSelectorOrder] = [ 'left-right', 'right-left', 'top-bottom', 'bottom-top', 'small-large', 'large-small', 'best-worst', 'worst-best' ]
 face_selector_genders : List[Gender] = [ 'female', 'male' ]
@@ -24,7 +24,11 @@ face_mask_area_set : FaceMaskAreaSet =\
 {
 	'upper-face': [ 0, 1, 2, 31, 32, 33, 34, 35, 14, 15, 16, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17 ],
 	'lower-face': [ 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 35, 34, 33, 32, 31 ],
-	'mouth': [ 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67 ]
+	'mouth': [ 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67 ],
+	'nose': [ 27, 28, 29, 30, 31, 32, 33, 34, 35 ],
+	'left-eye': [ 36, 37, 38, 39, 40, 41 ],
+	'right-eye': [ 42, 43, 44, 45, 46, 47 ],
+	'eyes': [ 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47 ]
 }
 face_mask_region_set : FaceMaskRegionSet =\
 {

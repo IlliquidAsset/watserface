@@ -4,7 +4,7 @@ gradio-rangeslider==0.0.8
 numpy==2.2.4
 opencv-python-headless==4.11.0.86
 onnx==1.17.0
-onnxruntime-gpu==1.22.0
+onnxruntime
 torch>=2.0.0,<3.0.0
 torchvision>=0.15.0
 Pillow>=10.0.0

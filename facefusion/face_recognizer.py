@@ -3,7 +3,7 @@ from typing import Tuple
 
 import numpy
 
-from facefusion import inference_manager
+from facefusion import inference_manager, logger
 from facefusion.download import conditional_download_hashes, conditional_download_sources, resolve_download_url
 from facefusion.face_helper import warp_face_by_face_landmark_5
 from facefusion.filesystem import resolve_relative_path
@@ -78,10 +78,22 @@ def calc_embedding(temp_vision_frame : VisionFrame, face_landmark_5 : FaceLandma
 def forward(crop_vision_frame : VisionFrame) -> Embedding:
 	face_recognizer = get_inference_pool().get('face_recognizer')
 
-	with conditional_thread_semaphore():
-		embedding = face_recognizer.run(None,
-		{
-			'input': crop_vision_frame
-		})[0]
+	try:
+		with conditional_thread_semaphore():
+			embedding = face_recognizer.run(None,
+			{
+				'input': crop_vision_frame
+			})[0]
+	except Exception as exception:
+		if 'CoreMLExecutionProvider' in face_recognizer.get_providers():
+			logger.warn("CoreML execution failed, falling back to CPU for Face Recognizer.", __name__)
+			face_recognizer.set_providers(['CPUExecutionProvider'])
+			with conditional_thread_semaphore():
+				embedding = face_recognizer.run(None,
+				{
+					'input': crop_vision_frame
+				})[0]
+		else:
+			raise exception
 
 	return embedding
