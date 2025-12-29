@@ -114,11 +114,10 @@ def start_identity_training(
 			yield "❌ Training failed to produce model.", telemetry
 			return
 	
-		# Copy to assets
+		# Copy to assets folder for persistence and detection
 		trained_models_dir = resolve_relative_path('../.assets/models/trained')
 		if not os.path.exists(trained_models_dir):
 			os.makedirs(trained_models_dir, exist_ok=True)
-		
 		
 		final_model_path = os.path.join(trained_models_dir, os.path.basename(onnx_path))
 		shutil.copy(onnx_path, final_model_path)
@@ -156,93 +155,70 @@ def start_occlusion_training(
 	epochs: int,
 	target_file: Any,
 	progress=gradio.Progress()
-) -> str:
+):
 	"""
 	Train an occlusion model (XSeg) from target file.
-
-	Args:
-		model_name: Name for the trained model
-		epochs: Number of training epochs
-		target_file: Uploaded target file
-		progress: Gradio Progress object
-
-	Returns:
-		Status message
 	"""
 	global _training_stopped
 	_training_stopped = False
+	telemetry = {'status': 'initializing'}
 
 	try:
-		# Validation
 		if not model_name:
-			return "❌ Error: Please enter a model name."
-
+			yield "❌ Error: Please enter a model name.", telemetry
+			return
 		if not target_file:
-			return "❌ Error: No target file uploaded."
+			yield "❌ Error: No target file uploaded.", telemetry
+			return
 
 		logger.info(f"Starting Occlusion Training for '{model_name}'...", __name__)
 
-		# Prepare dataset path
 		dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_occlusion')
-
-		# Clear existing dataset
 		if os.path.exists(dataset_path):
 			shutil.rmtree(dataset_path)
 		os.makedirs(dataset_path, exist_ok=True)
 
-		# Get target path
 		target_path = target_file.name if hasattr(target_file, 'name') else target_file
 
 		logger.info(f"Extracting dataset from target file...", __name__)
 
-		# Step 1: Extract dataset with MediaPipe landmarks
-		progress(0.1, desc="Extracting frames and landmarks...")
-
-		result = extract_training_dataset(
+		# Step 1: Extraction
+		last_stats = {}
+		for stats in extract_training_dataset(
 			source_paths=[target_path],
 			output_dir=dataset_path,
-			frame_interval=2,  # Higher density for occlusion training
-			max_frames=2000,  # Allow more frames for target video
+			frame_interval=2,
+			max_frames=2000,
 			progress=progress
-		)
+		):
+			if _training_stopped:
+				yield "Training Stopped.", telemetry
+				return
+			telemetry.update(stats)
+			telemetry['status'] = 'Extracting'
+			last_stats = stats
+			yield f"Extracting... {stats.get('frames_extracted', 0)} frames", telemetry
 
-		if result['frames_extracted'] == 0:
-			return "❌ Error: No frames with valid faces detected. Please use a video/image with clear faces."
+		if last_stats.get('frames_extracted', 0) == 0:
+			yield "❌ Error: No frames found.", telemetry
+			return
 
-		logger.info(
-			f"Extracted {result['frames_extracted']} frames with {result['landmarks_saved']} landmarks",
-			__name__
-		)
-
-		# Save dataset path to state for annotator
 		state_manager.set_item('training_dataset_path', dataset_path)
 
-		# Step 2: Apply temporal smoothing
-		progress(0.3, desc="Applying temporal smoothing...")
+		# Step 2: Smoothing
+		telemetry['status'] = 'Smoothing'
+		yield "Applying smoothing...", telemetry
+		apply_smoothing_to_dataset(dataset_path)
 
-		smooth_result = apply_smoothing_to_dataset(dataset_path, window_length=11)
-
-		logger.info(
-			f"Smoothed {smooth_result['samples_smoothed']} samples",
-			__name__
-		)
-
-		# Step 3: Check for manual masks
-		progress(0.35, desc="Checking for mask annotations...")
-
+		# Step 3: Masks
 		mask_info = check_dataset_masks(dataset_path)
+		telemetry.update(mask_info)
+		yield f"Mask Coverage: {mask_info['mask_coverage']:.1f}%", telemetry
 
-		if mask_info['mask_coverage'] < 5:
-			logger.warn(
-				f"Low mask coverage ({mask_info['mask_coverage']:.1f}%). "
-				"Using auto-generated masks from landmarks. "
-				"For better results, annotate masks using XSeg Annotator.",
-				__name__
-			)
-
-		# Step 4: Train XSeg model
-		progress(0.4, desc="Starting XSeg training...")
-
+		# Step 4: Training
+		telemetry['status'] = 'Training'
+		
+		# TODO: Make train_xseg_model yield updates too
 		onnx_path = train_xseg_model(
 			dataset_dir=dataset_path,
 			model_name=model_name,
@@ -253,19 +229,31 @@ def start_occlusion_training(
 			progress=progress
 		)
 
-		logger.info(f"Occlusion model trained successfully: {onnx_path}", __name__)
+		# Copy...
+		trained_models_dir = resolve_relative_path('../.assets/models/trained')
+		if not os.path.exists(trained_models_dir):
+			os.makedirs(trained_models_dir, exist_ok=True)
+		
+		final_model_path = os.path.join(trained_models_dir, os.path.basename(onnx_path))
+		shutil.copy(onnx_path, final_model_path)
+		
+		# Hash gen...
+		import zlib
+		with open(final_model_path, 'rb') as f:
+			model_content = f.read()
+		model_hash = format(zlib.crc32(model_content), '08x')
+		with open(os.path.splitext(final_model_path)[0] + '.hash', 'w') as f:
+			f.write(model_hash)
 
-		mask_msg = ""
-		if mask_info['mask_coverage'] < 50:
-			mask_msg = f"\n\n💡 Tip: Only {mask_info['mask_coverage']:.0f}% of samples have manual masks. For better results, use the XSeg Annotator to paint masks, then retrain."
-
-		return f"✅ Occlusion Model '{model_name}' trained successfully!\n📁 Saved to: {onnx_path}\n\n🔄 Refresh the app to see the model in the Swap tab.{mask_msg}"
+		telemetry['status'] = 'Complete'
+		telemetry['model_path'] = final_model_path
+		yield f"✅ Occlusion Training Complete.", telemetry
 
 	except Exception as e:
 		logger.error(f"Occlusion training failed: {e}", __name__)
 		import traceback
 		traceback.print_exc()
-		return f"❌ Training failed: {str(e)}"
+		yield f"❌ Training failed: {str(e)}", telemetry
 
 
 def stop_training() -> str:

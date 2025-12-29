@@ -15,38 +15,39 @@ def render() -> gradio.Blocks:
 		
 		with gradio.Row():
 			with gradio.Column(scale = 4):
-				with gradio.Accordion("🎛️ Processors", open=True):
-					processors.render()
+				# TO-DO: Re-integrate specialized tools (Age, Deep Swap, Enhancers) in advanced mode
+				# with gradio.Accordion("🎛️ Processors", open=True):
+				# 	processors.render()
 				
-				with gradio.Accordion("👤 Age Modifier", open=False):
-					age_modifier_options.render()
+				# with gradio.Accordion("👤 Age Modifier", open=False):
+				# 	age_modifier_options.render()
 					
-				with gradio.Accordion("🔄 Deep Swapper", open=False):
-					deep_swapper_options.render()
+				# with gradio.Accordion("🔄 Deep Swapper", open=False):
+				# 	deep_swapper_options.render()
 					
-				with gradio.Accordion("😊 Expression Restorer", open=False):
-					expression_restorer_options.render()
+				# with gradio.Accordion("😊 Expression Restorer", open=False):
+				# 	expression_restorer_options.render()
 					
-				with gradio.Accordion("🐛 Face Debugger", open=False):
-					face_debugger_options.render()
+				# with gradio.Accordion("🐛 Face Debugger", open=False):
+				# 	face_debugger_options.render()
 					
-				with gradio.Accordion("✏️ Face Editor", open=False):
-					face_editor_options.render()
+				# with gradio.Accordion("✏️ Face Editor", open=False):
+				# 	face_editor_options.render()
 					
-				with gradio.Accordion("✨ Face Enhancer", open=False):
-					face_enhancer_options.render()
+				# with gradio.Accordion("✨ Face Enhancer", open=False):
+				# 	face_enhancer_options.render()
 					
-				with gradio.Accordion("🔀 Face Swapper", open=True):
+				with gradio.Accordion("👤 Custom Identity / Face Swapper", open=True):
 					face_swapper_options.render()
 					
-				with gradio.Accordion("🎨 Frame Colorizer", open=False):
-					frame_colorizer_options.render()
+				# with gradio.Accordion("🎨 Frame Colorizer", open=False):
+				# 	frame_colorizer_options.render()
 					
-				with gradio.Accordion("📈 Frame Enhancer", open=False):
-					frame_enhancer_options.render()
+				# with gradio.Accordion("📈 Frame Enhancer", open=False):
+				# 	frame_enhancer_options.render()
 					
-				with gradio.Accordion("👄 Lip Syncer", open=False):
-					lip_syncer_options.render()
+				# with gradio.Accordion("👄 Lip Syncer", open=False):
+				# 	lip_syncer_options.render()
 					
 				with gradio.Accordion("⚡ Execution", open=False):
 					execution.render()
@@ -109,17 +110,17 @@ def render() -> gradio.Blocks:
 
 
 def listen() -> None:
-	processors.listen()
-	age_modifier_options.listen()
-	deep_swapper_options.listen()
-	expression_restorer_options.listen()
-	face_debugger_options.listen()
-	face_editor_options.listen()
-	face_enhancer_options.listen()
+	# processors.listen()
+	# age_modifier_options.listen()
+	# deep_swapper_options.listen()
+	# expression_restorer_options.listen()
+	# face_debugger_options.listen()
+	# face_editor_options.listen()
+	# face_enhancer_options.listen()
 	face_swapper_options.listen()
-	frame_colorizer_options.listen()
-	frame_enhancer_options.listen()
-	lip_syncer_options.listen()
+	# frame_colorizer_options.listen()
+	# frame_enhancer_options.listen()
+	# lip_syncer_options.listen()
 	execution.listen()
 	execution_thread_count.listen()
 	execution_queue_count.listen()
