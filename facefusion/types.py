@@ -16,12 +16,14 @@ Prediction : TypeAlias = NDArray[Any]
 BoundingBox : TypeAlias = NDArray[Any]
 FaceLandmark5 : TypeAlias = NDArray[Any]
 FaceLandmark68 : TypeAlias = NDArray[Any]
+FaceLandmark478 : TypeAlias = NDArray[Any]
 FaceLandmarkSet = TypedDict('FaceLandmarkSet',
 {
 	'5' : FaceLandmark5, #type:ignore[valid-type]
 	'5/68' : FaceLandmark5, #type:ignore[valid-type]
 	'68' : FaceLandmark68, #type:ignore[valid-type]
-	'68/5' : FaceLandmark68 #type:ignore[valid-type]
+	'68/5' : FaceLandmark68, #type:ignore[valid-type]
+	'478' : FaceLandmark478 #type:ignore[valid-type]
 })
 FaceScoreSet = TypedDict('FaceScoreSet',
 {
@@ -294,6 +296,8 @@ StateKey = Literal\
 	'open_browser',
 	'ui_layouts',
 	'ui_workflow',
+	'server_name',
+	'server_port',
 	'execution_device_id',
 	'execution_providers',
 	'execution_thread_count',
@@ -304,7 +308,10 @@ StateKey = Literal\
 	'halt_on_error',
 	'job_id',
 	'job_status',
-	'step_index'
+	'step_index',
+	'identity_profile_id',
+	'training_source_path',
+	'training_target_path'
 ]
 State = TypedDict('State',
 {
@@ -362,6 +369,8 @@ State = TypedDict('State',
 	'open_browser' : bool,
 	'ui_layouts' : List[str],
 	'ui_workflow' : UiWorkflow,
+	'server_name' : str,
+	'server_port' : int,
 	'execution_device_id' : str,
 	'execution_providers' : List[ExecutionProvider],
 	'execution_thread_count' : int,
@@ -372,7 +381,10 @@ State = TypedDict('State',
 	'halt_on_error' : bool,
 	'job_id' : str,
 	'job_status' : JobStatus,
-	'step_index' : int
+	'step_index' : int,
+	'identity_profile_id' : str,
+	'training_source_path' : str,
+	'training_target_path' : str
 })
 ApplyStateItem : TypeAlias = Callable[[Any, Any], None]
 StateSet : TypeAlias = Dict[AppContext, State]

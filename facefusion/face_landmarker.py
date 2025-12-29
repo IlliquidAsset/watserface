@@ -1,7 +1,8 @@
 from functools import lru_cache
-from typing import Tuple
+from typing import Optional, Tuple
 
 import cv2
+import mediapipe
 import numpy
 
 from facefusion import inference_manager, state_manager
@@ -9,7 +10,9 @@ from facefusion.download import conditional_download_hashes, conditional_downloa
 from facefusion.face_helper import create_rotated_matrix_and_size, estimate_matrix_by_face_landmark_5, transform_points, warp_face_by_translation
 from facefusion.filesystem import resolve_relative_path
 from facefusion.thread_helper import conditional_thread_semaphore
-from facefusion.types import Angle, BoundingBox, DownloadScope, DownloadSet, FaceLandmark5, FaceLandmark68, InferencePool, ModelSet, Prediction, Score, VisionFrame
+from facefusion.types import Angle, BoundingBox, DownloadScope, DownloadSet, FaceLandmark5, FaceLandmark68, FaceLandmark478, InferencePool, ModelSet, Prediction, Score, VisionFrame
+
+MEDIAPIPE_FACE_MESH = None
 
 
 @lru_cache(maxsize = None)
@@ -115,11 +118,14 @@ def pre_check() -> bool:
 	return conditional_download_hashes(model_hash_set) and conditional_download_sources(model_source_set)
 
 
-def detect_face_landmark(vision_frame : VisionFrame, bounding_box : BoundingBox, face_angle : Angle) -> Tuple[FaceLandmark68, Score]:
+def detect_face_landmark(vision_frame : VisionFrame, bounding_box : BoundingBox, face_angle : Angle) -> Tuple[FaceLandmark68, Optional[FaceLandmark478], Score]:
 	face_landmark_2dfan4 = None
 	face_landmark_peppa_wutz = None
 	face_landmark_score_2dfan4 = 0.0
 	face_landmark_score_peppa_wutz = 0.0
+
+	if state_manager.get_item('face_landmarker_model') == 'mediapipe':
+		return detect_with_mediapipe(vision_frame, bounding_box, face_angle)
 
 	if state_manager.get_item('face_landmarker_model') in [ 'many', '2dfan4' ]:
 		face_landmark_2dfan4, face_landmark_score_2dfan4 = detect_with_2dfan4(vision_frame, bounding_box, face_angle)
@@ -128,8 +134,8 @@ def detect_face_landmark(vision_frame : VisionFrame, bounding_box : BoundingBox,
 		face_landmark_peppa_wutz, face_landmark_score_peppa_wutz = detect_with_peppa_wutz(vision_frame, bounding_box, face_angle)
 
 	if face_landmark_score_2dfan4 > face_landmark_score_peppa_wutz - 0.2:
-		return face_landmark_2dfan4, face_landmark_score_2dfan4
-	return face_landmark_peppa_wutz, face_landmark_score_peppa_wutz
+		return face_landmark_2dfan4, None, face_landmark_score_2dfan4
+	return face_landmark_peppa_wutz, None, face_landmark_score_peppa_wutz
 
 
 def detect_with_2dfan4(temp_vision_frame: VisionFrame, bounding_box: BoundingBox, face_angle: Angle) -> Tuple[FaceLandmark68, Score]:
@@ -168,6 +174,50 @@ def detect_with_peppa_wutz(temp_vision_frame : VisionFrame, bounding_box : Bound
 	face_landmark_score_68 = prediction.reshape(-1, 3)[:, 2].mean()
 	face_landmark_score_68 = numpy.interp(face_landmark_score_68, [ 0, 0.95 ], [ 0, 1 ])
 	return face_landmark_68, face_landmark_score_68
+
+
+def detect_with_mediapipe(temp_vision_frame : VisionFrame, bounding_box : BoundingBox, face_angle : Angle) -> Tuple[FaceLandmark68, Optional[FaceLandmark478], Score]:
+	global MEDIAPIPE_FACE_MESH
+
+	if MEDIAPIPE_FACE_MESH is None:
+		from mediapipe.python.solutions import face_mesh
+		MEDIAPIPE_FACE_MESH = face_mesh.FaceMesh(
+			static_image_mode = True,
+			max_num_faces = 1,
+			refine_landmarks = True,
+			min_detection_confidence = 0.5
+		)
+
+	model_size = (256, 256)
+	scale = 195 / numpy.subtract(bounding_box[2:], bounding_box[:2]).max().clip(1, None)
+	translation = (model_size[0] - numpy.add(bounding_box[2:], bounding_box[:2]) * scale) * 0.5
+	rotated_matrix, rotated_size = create_rotated_matrix_and_size(face_angle, model_size)
+	crop_vision_frame, affine_matrix = warp_face_by_translation(temp_vision_frame, translation, scale, model_size)
+	crop_vision_frame = cv2.warpAffine(crop_vision_frame, rotated_matrix, rotated_size)
+	
+	results = MEDIAPIPE_FACE_MESH.process(crop_vision_frame)
+	
+	if results.multi_face_landmarks:
+		face_landmarks = results.multi_face_landmarks[0]
+		h, w, _ = crop_vision_frame.shape
+		landmarks_478 = numpy.array([ [ lm.x * w, lm.y * h ] for lm in face_landmarks.landmark ]).astype(numpy.float32)
+		
+		# Map 478 to 68 (Approximate indices)
+		# This is a basic mapping, a full mapping is verbose
+		indices_68 = [ 162, 234, 93, 58, 172, 136, 149, 148, 152, 377, 378, 365, 397, 288, 323, 454, 389, 71, 63, 105, 66, 107, 336, 296, 334, 293, 300, 168, 6, 195, 4, 64, 60, 279, 292, 305, 7, 33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, 61, 40, 37, 0, 267, 270, 291, 321, 314, 17, 84, 181, 78, 82, 13, 312, 308, 317, 14 ]
+		if len(indices_68) == 68:
+			landmarks_68 = landmarks_478[indices_68]
+		else:
+			# Fallback if mapping is wrong (safety)
+			landmarks_68 = landmarks_478[:68]
+
+		landmarks_68 = transform_points(landmarks_68, cv2.invertAffineTransform(rotated_matrix))
+		landmarks_68 = transform_points(landmarks_68, cv2.invertAffineTransform(affine_matrix))
+		landmarks_478 = transform_points(landmarks_478, cv2.invertAffineTransform(rotated_matrix))
+		landmarks_478 = transform_points(landmarks_478, cv2.invertAffineTransform(affine_matrix))
+		
+		return landmarks_68, landmarks_478, 1.0 # High confidence for MP
+	return None, None, 0.0
 
 
 def conditional_optimize_contrast(crop_vision_frame : VisionFrame) -> VisionFrame:

@@ -1,0 +1,274 @@
+"""
+Training Core Module.
+
+Orchestrates dataset extraction, landmark smoothing, and model training.
+"""
+
+import os
+import shutil
+import gradio
+from typing import Any, List
+from pathlib import Path
+
+from facefusion import logger, state_manager
+from facefusion.filesystem import is_video, resolve_relative_path
+from facefusion.training.dataset_extractor import extract_training_dataset
+from facefusion.training.landmark_smoother import apply_smoothing_to_dataset
+from facefusion.training.train_instantid import train_instantid_model
+from facefusion.training.train_xseg import train_xseg_model
+from facefusion.training.datasets.xseg_dataset import check_dataset_masks
+
+
+# Global flag for stopping training
+_training_stopped = False
+
+
+def start_identity_training(
+	model_name: str,
+	epochs: int,
+	source_files: Any,
+	progress=gradio.Progress()
+) -> str:
+	"""
+	Train an identity model (InstantID) from source files.
+
+	Args:
+		model_name: Name for the trained model
+		epochs: Number of training epochs
+		source_files: Uploaded source file(s)
+		progress: Gradio Progress object
+
+	Returns:
+		Status message
+	"""
+	global _training_stopped
+	_training_stopped = False
+
+	try:
+		# Validation
+		if not model_name:
+			return "❌ Error: Please enter a model name."
+
+		if not source_files:
+			return "❌ Error: No source files uploaded."
+
+		logger.info(f"Starting Identity Training for '{model_name}'...", __name__)
+
+		# Prepare dataset path
+		dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_identity')
+
+		# Clear existing dataset
+		if os.path.exists(dataset_path):
+			shutil.rmtree(dataset_path)
+		os.makedirs(dataset_path, exist_ok=True)
+
+		# Convert source files to list of paths
+		source_list = source_files if isinstance(source_files, list) else [source_files]
+		source_paths = []
+
+		for source_file in source_list:
+			if hasattr(source_file, 'name'):
+				source_paths.append(source_file.name)
+			else:
+				source_paths.append(source_file)
+
+		logger.info(f"Extracting dataset from {len(source_paths)} source file(s)...", __name__)
+
+		# Step 1: Extract dataset with MediaPipe landmarks
+		progress(0.1, desc="Extracting frames and landmarks...")
+
+		result = extract_training_dataset(
+			source_paths=source_paths,
+			output_dir=dataset_path,
+			frame_interval=2,  # Extract every 2nd frame for higher density
+			max_frames=1000,  # Increase limit significantly
+			progress=progress
+		)
+
+		if result['frames_extracted'] == 0:
+			return "❌ Error: No frames with valid faces detected. Please use images/videos with clear faces."
+
+		logger.info(
+			f"Extracted {result['frames_extracted']} frames with {result['landmarks_saved']} landmarks",
+			__name__
+		)
+
+		# Step 2: Apply temporal smoothing
+		progress(0.3, desc="Applying temporal smoothing...")
+
+		smooth_result = apply_smoothing_to_dataset(dataset_path, window_length=11)
+
+		logger.info(
+			f"Smoothed {smooth_result['samples_smoothed']} samples across {smooth_result['sequences_smoothed']} sequences",
+			__name__
+		)
+
+		# Step 3: Train InstantID model
+		progress(0.4, desc="Starting InstantID training...")
+
+		onnx_path = train_instantid_model(
+			dataset_dir=dataset_path,
+			model_name=model_name,
+			epochs=epochs,
+			batch_size=4,
+			learning_rate=0.0001,
+			save_interval=max(10, epochs // 5),
+			progress=progress
+		)
+
+		# Copy to assets folder for persistence and detection
+		trained_models_dir = resolve_relative_path('../.assets/models/trained')
+		if not os.path.exists(trained_models_dir):
+			os.makedirs(trained_models_dir, exist_ok=True)
+		
+		final_model_path = os.path.join(trained_models_dir, os.path.basename(onnx_path))
+		shutil.copy(onnx_path, final_model_path)
+
+		# Generate hash file to prevent deletion by validator
+		import zlib
+		with open(final_model_path, 'rb') as f:
+			model_content = f.read()
+		model_hash = format(zlib.crc32(model_content), '08x')
+		
+		final_hash_path = os.path.splitext(final_model_path)[0] + '.hash'
+		with open(final_hash_path, 'w') as f:
+			f.write(model_hash)
+
+		logger.info(f"Identity model trained successfully and saved to: {final_model_path}", __name__)
+
+		return f"✅ Identity Model '{model_name}' trained successfully!\n📁 Saved to: {final_model_path}\n\n🔄 Refresh the app or click the new refresh button in Swap tab to use it."
+
+	except Exception as e:
+		logger.error(f"Identity training failed: {e}", __name__)
+		import traceback
+		traceback.print_exc()
+		return f"❌ Training failed: {str(e)}"
+
+
+def start_occlusion_training(
+	model_name: str,
+	epochs: int,
+	target_file: Any,
+	progress=gradio.Progress()
+) -> str:
+	"""
+	Train an occlusion model (XSeg) from target file.
+
+	Args:
+		model_name: Name for the trained model
+		epochs: Number of training epochs
+		target_file: Uploaded target file
+		progress: Gradio Progress object
+
+	Returns:
+		Status message
+	"""
+	global _training_stopped
+	_training_stopped = False
+
+	try:
+		# Validation
+		if not model_name:
+			return "❌ Error: Please enter a model name."
+
+		if not target_file:
+			return "❌ Error: No target file uploaded."
+
+		logger.info(f"Starting Occlusion Training for '{model_name}'...", __name__)
+
+		# Prepare dataset path
+		dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_occlusion')
+
+		# Clear existing dataset
+		if os.path.exists(dataset_path):
+			shutil.rmtree(dataset_path)
+		os.makedirs(dataset_path, exist_ok=True)
+
+		# Get target path
+		target_path = target_file.name if hasattr(target_file, 'name') else target_file
+
+		logger.info(f"Extracting dataset from target file...", __name__)
+
+		# Step 1: Extract dataset with MediaPipe landmarks
+		progress(0.1, desc="Extracting frames and landmarks...")
+
+		result = extract_training_dataset(
+			source_paths=[target_path],
+			output_dir=dataset_path,
+			frame_interval=2,  # Higher density for occlusion training
+			max_frames=2000,  # Allow more frames for target video
+			progress=progress
+		)
+
+		if result['frames_extracted'] == 0:
+			return "❌ Error: No frames with valid faces detected. Please use a video/image with clear faces."
+
+		logger.info(
+			f"Extracted {result['frames_extracted']} frames with {result['landmarks_saved']} landmarks",
+			__name__
+		)
+
+		# Save dataset path to state for annotator
+		state_manager.set_item('training_dataset_path', dataset_path)
+
+		# Step 2: Apply temporal smoothing
+		progress(0.3, desc="Applying temporal smoothing...")
+
+		smooth_result = apply_smoothing_to_dataset(dataset_path, window_length=11)
+
+		logger.info(
+			f"Smoothed {smooth_result['samples_smoothed']} samples",
+			__name__
+		)
+
+		# Step 3: Check for manual masks
+		progress(0.35, desc="Checking for mask annotations...")
+
+		mask_info = check_dataset_masks(dataset_path)
+
+		if mask_info['mask_coverage'] < 5:
+			logger.warn(
+				f"Low mask coverage ({mask_info['mask_coverage']:.1f}%). "
+				"Using auto-generated masks from landmarks. "
+				"For better results, annotate masks using XSeg Annotator.",
+				__name__
+			)
+
+		# Step 4: Train XSeg model
+		progress(0.4, desc="Starting XSeg training...")
+
+		onnx_path = train_xseg_model(
+			dataset_dir=dataset_path,
+			model_name=model_name,
+			epochs=epochs,
+			batch_size=4,
+			learning_rate=0.001,
+			save_interval=max(10, epochs // 5),
+			progress=progress
+		)
+
+		logger.info(f"Occlusion model trained successfully: {onnx_path}", __name__)
+
+		mask_msg = ""
+		if mask_info['mask_coverage'] < 50:
+			mask_msg = f"\n\n💡 Tip: Only {mask_info['mask_coverage']:.0f}% of samples have manual masks. For better results, use the XSeg Annotator to paint masks, then retrain."
+
+		return f"✅ Occlusion Model '{model_name}' trained successfully!\n📁 Saved to: {onnx_path}\n\n🔄 Refresh the app to see the model in the Swap tab.{mask_msg}"
+
+	except Exception as e:
+		logger.error(f"Occlusion training failed: {e}", __name__)
+		import traceback
+		traceback.print_exc()
+		return f"❌ Training failed: {str(e)}"
+
+
+def stop_training() -> str:
+	"""Stop ongoing training (placeholder for future implementation)."""
+	global _training_stopped
+	if _training_stopped:
+		return "Training is already stopped."
+	_training_stopped = True
+	import inspect
+	caller = inspect.stack()[1].function
+	logger.info(f"Training stop requested by {caller}", __name__)
+	return "⚠️ Training stop requested. Note: Current epoch will complete before stopping."

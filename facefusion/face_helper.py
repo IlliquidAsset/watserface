@@ -5,7 +5,7 @@ import cv2
 import numpy
 from cv2.typing import Size
 
-from facefusion.types import Anchors, Angle, BoundingBox, Distance, FaceDetectorModel, FaceLandmark5, FaceLandmark68, Mask, Matrix, Points, Scale, Score, Translation, VisionFrame, WarpTemplate, WarpTemplateSet
+from facefusion.types import Anchors, Angle, BoundingBox, Distance, Face, FaceDetectorModel, FaceLandmark5, FaceLandmark68, FaceLandmark478, Mask, Matrix, Points, Scale, Score, Translation, VisionFrame, WarpTemplate, WarpTemplateSet
 
 WARP_TEMPLATE_SET : WarpTemplateSet =\
 {
@@ -68,6 +68,62 @@ WARP_TEMPLATE_SET : WarpTemplateSet =\
 }
 
 
+def predict_next_faces(face_history : List[List[Face]]) -> List[Face]:
+	if len(face_history) < 2:
+		return face_history[-1] if face_history else []
+
+	last_faces = face_history[-1]
+	prev_faces = face_history[-2]
+	predicted_faces = []
+
+	for last_face in last_faces:
+		closest_face = None
+		min_dist = float('inf')
+		last_center = numpy.array([ (last_face.bounding_box[0] + last_face.bounding_box[2]) / 2, (last_face.bounding_box[1] + last_face.bounding_box[3]) / 2 ])
+
+		for prev_face in prev_faces:
+			prev_center = numpy.array([ (prev_face.bounding_box[0] + prev_face.bounding_box[2]) / 2, (prev_face.bounding_box[1] + prev_face.bounding_box[3]) / 2 ])
+			dist = numpy.linalg.norm(last_center - prev_center)
+			if dist < min_dist:
+				min_dist = dist
+				closest_face = prev_face
+
+		if closest_face and min_dist < 100:
+			delta_bbox = last_face.bounding_box - closest_face.bounding_box
+			delta_landmark_5 = last_face.landmark_set['5'] - closest_face.landmark_set['5']
+			delta_landmark_5_68 = last_face.landmark_set['5/68'] - closest_face.landmark_set['5/68']
+			delta_landmark_68 = last_face.landmark_set['68'] - closest_face.landmark_set['68']
+			delta_landmark_68_5 = last_face.landmark_set['68/5'] - closest_face.landmark_set['68/5']
+
+			new_bbox = last_face.bounding_box + delta_bbox
+			new_landmark_5 = last_face.landmark_set['5'] + delta_landmark_5
+			new_landmark_5_68 = last_face.landmark_set['5/68'] + delta_landmark_5_68
+			new_landmark_68 = last_face.landmark_set['68'] + delta_landmark_68
+			new_landmark_68_5 = last_face.landmark_set['68/5'] + delta_landmark_68_5
+
+			new_face = Face(
+				bounding_box = new_bbox,
+				score_set = last_face.score_set,
+				landmark_set =
+				{
+					'5': new_landmark_5,
+					'5/68': new_landmark_5_68,
+					'68': new_landmark_68,
+					'68/5': new_landmark_68_5
+				},
+				angle = last_face.angle,
+				embedding = last_face.embedding,
+				normed_embedding = last_face.normed_embedding,
+				gender = last_face.gender,
+				age = last_face.age,
+				race = last_face.race
+			)
+			predicted_faces.append(new_face)
+		else:
+			predicted_faces.append(last_face)
+	return predicted_faces
+
+
 def estimate_matrix_by_face_landmark_5(face_landmark_5 : FaceLandmark5, warp_template : WarpTemplate, crop_size : Size) -> Matrix:
 	normed_warp_template = WARP_TEMPLATE_SET.get(warp_template) * crop_size
 	affine_matrix = cv2.estimateAffinePartial2D(face_landmark_5, normed_warp_template, method = cv2.RANSAC, ransacReprojThreshold = 100)[0]
@@ -98,6 +154,80 @@ def warp_face_by_translation(temp_vision_frame : VisionFrame, translation : Tran
 	return crop_vision_frame, affine_matrix
 
 
+def thin_plate_spline_warp(vision_frame : VisionFrame, source_points : Points, target_points : Points, size : Size) -> VisionFrame:
+	height, width = vision_frame.shape[:2]
+	target_height, target_width = size
+	
+	# Normalize coordinates to avoid large numbers causing instability
+	scale_x = width
+	scale_y = height
+	
+	norm_source = source_points.copy().astype(numpy.float64)
+	norm_source[:, 0] /= scale_x
+	norm_source[:, 1] /= scale_y
+	
+	norm_target = target_points.copy().astype(numpy.float64)
+	norm_target[:, 0] /= float(target_width)
+	norm_target[:, 1] /= float(target_height)
+
+	# Compute TPS coefficients
+	def _tps_kernel(r):
+		# Robust kernel: r^2 * log(r)
+		# Add epsilon to r^2 to avoid log(0) and small instabilities
+		return r**2 * numpy.log(r + 1e-9)
+
+	n = norm_source.shape[0]
+	
+	# K matrix: n x n
+	dist_matrix = numpy.linalg.norm(norm_target[:, None, :] - norm_target[None, :, :], axis=-1)
+	K = _tps_kernel(dist_matrix)
+	
+	# P matrix: n x 3
+	P = numpy.hstack([numpy.ones((n, 1)), norm_target])
+	
+	# L matrix: (n+3) x (n+3)
+	L = numpy.block([
+		[K, P],
+		[P.T, numpy.zeros((3, 3))]
+	])
+	
+	# Y matrix: (n+3) x 2
+	Y = numpy.vstack([norm_source, numpy.zeros((3, 2))])
+	
+	# Solve for weights W and coefficients A with regularization
+	# Using lstsq instead of solve for better stability with near-singular matrices
+	try:
+		params, _, _, _ = numpy.linalg.lstsq(L + numpy.eye(n + 3) * 1e-6, Y, rcond=None)
+	except numpy.linalg.LinAlgError:
+		return cv2.resize(vision_frame, size)
+		
+	W = params[:n]
+	A = params[n:]
+	
+	# Create grid for remapping (normalized coords)
+	grid_x, grid_y = numpy.meshgrid(
+		numpy.linspace(0, 1, target_width), 
+		numpy.linspace(0, 1, target_height)
+	)
+	points_grid = numpy.stack([grid_x.ravel(), grid_y.ravel()], axis=-1).astype(numpy.float64)
+	
+	# Compute distances from grid points to target landmarks
+	# Process in chunks to save memory if needed, but for face crops (512x512) full batch is fine
+	dist_grid = numpy.linalg.norm(points_grid[:, None, :] - norm_target[None, :, :], axis=-1)
+	K_grid = _tps_kernel(dist_grid)
+	
+	# Map grid points back to source space
+	map_points_norm = K_grid @ W + points_grid @ A[1:] + A[0]
+	
+	# Denormalize map points to pixel coordinates
+	map_x = (map_points_norm[:, 0] * scale_x).reshape(target_height, target_width).astype(numpy.float32)
+	map_y = (map_points_norm[:, 1] * scale_y).reshape(target_height, target_width).astype(numpy.float32)
+	
+	# Remap image
+	warp_vision_frame = cv2.remap(vision_frame, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+	return warp_vision_frame
+
+
 def paste_back(temp_vision_frame : VisionFrame, crop_vision_frame : VisionFrame, crop_mask : Mask, affine_matrix : Matrix) -> VisionFrame:
 	paste_bounding_box, paste_matrix = calc_paste_area(temp_vision_frame, crop_vision_frame, affine_matrix)
 	x_min, y_min, x_max, y_max = paste_bounding_box
@@ -110,6 +240,27 @@ def paste_back(temp_vision_frame : VisionFrame, crop_vision_frame : VisionFrame,
 	paste_vision_frame = temp_vision_frame[y_min:y_max, x_min:x_max]
 	paste_vision_frame = paste_vision_frame * (1 - inverse_mask) + inverse_vision_frame * inverse_mask
 	temp_vision_frame[y_min:y_max, x_min:x_max] = paste_vision_frame.astype(temp_vision_frame.dtype)
+	return temp_vision_frame
+
+
+def poisson_paste_back(temp_vision_frame : VisionFrame, crop_vision_frame : VisionFrame, crop_mask : Mask, affine_matrix : Matrix) -> VisionFrame:
+	paste_bounding_box, paste_matrix = calc_paste_area(temp_vision_frame, crop_vision_frame, affine_matrix)
+	x_min, y_min, x_max, y_max = paste_bounding_box
+	paste_width = x_max - x_min
+	paste_height = y_max - y_min
+	
+	inverse_mask = cv2.warpAffine(crop_mask, paste_matrix, (paste_width, paste_height)).clip(0, 1)
+	inverse_mask = (inverse_mask * 255).astype(numpy.uint8)
+	inverse_vision_frame = cv2.warpAffine(crop_vision_frame, paste_matrix, (paste_width, paste_height), borderMode = cv2.BORDER_REPLICATE)
+	
+	# Center for seamlessClone
+	center = (x_min + paste_width // 2, y_min + paste_height // 2)
+	
+	try:
+		temp_vision_frame = cv2.seamlessClone(inverse_vision_frame, temp_vision_frame, inverse_mask, center, cv2.MIXED_CLONE)
+	except cv2.error:
+		return paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
+		
 	return temp_vision_frame
 
 
@@ -213,6 +364,25 @@ def convert_to_face_landmark_5(face_landmark_68 : FaceLandmark68) -> FaceLandmar
 		face_landmark_68[30],
 		face_landmark_68[48],
 		face_landmark_68[54]
+	])
+	return face_landmark_5
+
+
+def convert_to_face_landmark_5_from_478(face_landmark_478 : FaceLandmark478) -> FaceLandmark5:
+	# MediaPipe indices
+	left_eye_indices = [ 33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246 ]
+	right_eye_indices = [ 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398 ]
+	nose_tip_index = 1
+	left_mouth_corner_index = 61
+	right_mouth_corner_index = 291
+
+	face_landmark_5 = numpy.array(
+	[
+		numpy.mean(face_landmark_478[left_eye_indices], axis = 0),
+		numpy.mean(face_landmark_478[right_eye_indices], axis = 0),
+		face_landmark_478[nose_tip_index],
+		face_landmark_478[left_mouth_corner_index],
+		face_landmark_478[right_mouth_corner_index]
 	])
 	return face_landmark_5
 

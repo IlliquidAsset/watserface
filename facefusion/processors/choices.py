@@ -194,6 +194,13 @@ face_swapper_set : FaceSwapperSet =\
 	'simswap_unofficial_512': [ '512x512', '768x768', '1024x1024' ],
 	'uniface_256': [ '256x256', '512x512', '768x768', '1024x1024' ]
 }
+
+trained_model_file_paths = resolve_file_paths(resolve_relative_path('../.assets/models/trained'))
+if trained_model_file_paths:
+	for model_file_path in trained_model_file_paths:
+		model_name = get_file_name(model_file_path)
+		face_swapper_set[model_name] = [ '256x256', '512x512' ] # Default resolutions
+
 face_swapper_models : List[FaceSwapperModel] = list(face_swapper_set.keys())
 frame_colorizer_models : List[FrameColorizerModel] = [ 'ddcolor', 'ddcolor_artistic', 'deoldify', 'deoldify_artistic', 'deoldify_stable' ]
 frame_colorizer_sizes : List[str] = [ '192x192', '256x256', '384x384', '512x512' ]
