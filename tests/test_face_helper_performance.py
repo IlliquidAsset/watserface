@@ -1,6 +1,6 @@
 import numpy
 from collections import namedtuple
-from facefusion.face_helper import predict_next_faces
+from watserface.face_helper import predict_next_faces
 
 # Mock Face object
 Face = namedtuple('Face',

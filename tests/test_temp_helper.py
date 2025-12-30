@@ -3,9 +3,9 @@ import tempfile
 
 import pytest
 
-from facefusion import state_manager
-from facefusion.download import conditional_download
-from facefusion.temp_helper import get_temp_directory_path, get_temp_file_path, get_temp_frames_pattern
+from watserface import state_manager
+from watserface.download import conditional_download
+from watserface.temp_helper import get_temp_directory_path, get_temp_file_path, get_temp_frames_pattern
 from .helper import get_test_example_file, get_test_examples_directory
 
 

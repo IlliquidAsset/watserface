@@ -138,11 +138,14 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 
 	model.train()
 	start_time = time.time()
-	
+	total_batches = len(dataloader)
+
 	try:
-		for epoch in progress.tqdm(range(start_epoch, epochs), desc="Fine-tuning Identity"):
+		for epoch in range(start_epoch, epochs):
 			epoch_loss = 0
-			for imgs in dataloader:
+			epoch_start_time = time.time()
+
+			for batch_idx, imgs in enumerate(dataloader):
 				img_batch = imgs.to(device)
 				id_emb = torch.randn(img_batch.size(0), 512).to(device)
 
@@ -153,7 +156,30 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 				optimizer.step()
 				epoch_loss += loss.item()
 
+				# Update batch progress every 10% or every 5 batches
+				if batch_idx % max(1, total_batches // 10) == 0 or batch_idx == 0:
+					# Calculate overall progress (across all epochs)
+					overall_progress = ((epoch * total_batches) + (batch_idx + 1)) / (epochs * total_batches)
+
+					# Update Gradio progress bar (visual progress bar at top of UI)
+					progress(overall_progress, desc=f"Epoch {epoch + 1}/{epochs} - Batch {batch_idx + 1}/{total_batches}")
+					batch_progress = (batch_idx + 1) / total_batches * 100
+					current_loss = epoch_loss / (batch_idx + 1)
+
+					# Yield batch-level progress
+					batch_telemetry = {
+						'epoch': epoch + 1,
+						'total_epochs': epochs,
+						'epoch_progress': f"{batch_progress:.0f}%",
+						'batch': batch_idx + 1,
+						'total_batches': total_batches,
+						'current_loss': f"{current_loss:.4f}",
+						'device': str(device)
+					}
+					yield f"Epoch {epoch + 1}/{epochs} - Batch {batch_idx + 1}/{total_batches} ({batch_progress:.0f}%) | Loss: {current_loss:.4f}", batch_telemetry
+
 			avg_loss = epoch_loss / len(dataloader)
+			epoch_time = time.time() - epoch_start_time
 
 			# Telemetry
 			elapsed = time.time() - start_time
@@ -162,11 +188,16 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			remaining_epochs = epochs - (epoch + 1)
 			eta_seconds = avg_time_per_epoch * remaining_epochs
 
+			# Calculate overall progress percentage
+			overall_progress = ((epoch + 1) / epochs) * 100
+
 			telemetry = {
 				'epoch': epoch + 1,
 				'total_epochs': epochs,
 				'loss': f"{avg_loss:.4f}",
+				'epoch_time': f"{int(epoch_time)}s",
 				'eta': f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s",
+				'overall_progress': f"{overall_progress:.1f}%",
 				'frames_used': len(dataset),
 				'batch_size': batch_size,
 				'device': str(device)
@@ -174,7 +205,7 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 
 			# Log to terminal every epoch or every 10%
 			if epoch % max(1, epochs // 10) == 0 or epoch == epochs - 1:
-				logger.info(f"Training Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", __name__)
+				logger.info(f"✅ Epoch {epoch + 1}/{epochs} Complete | Loss: {avg_loss:.4f} | Epoch Time: {int(epoch_time)}s | ETA: {telemetry['eta']}", __name__)
 
 			# Save Checkpoint periodically (with full state)
 			if (epoch + 1) % save_interval == 0:
@@ -187,7 +218,7 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 				torch.save(checkpoint_state, checkpoint_path)
 				logger.info(f"💾 Checkpoint saved at epoch {epoch + 1}", __name__)
 
-			yield f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", telemetry
+			yield f"✅ Epoch {epoch + 1}/{epochs} Complete ({overall_progress:.1f}%) | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", telemetry
 
 	except GeneratorExit:
 		logger.info("⚠️  Training interrupted. Saving current checkpoint...", __name__)

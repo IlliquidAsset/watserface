@@ -2,7 +2,7 @@ from typing import Optional, Any, Dict
 import gradio
 
 from watserface import state_manager
-from watserface.uis.components import about, training_options, training_source, training_target, terminal
+from watserface.uis.components import about, footer, training_options, training_source, training_target, terminal
 from watserface.training import core as training_core
 
 
@@ -18,31 +18,86 @@ def format_training_status(status_data: Any) -> str:
 		# Add telemetry details if present
 		if telemetry.get('status'):
 			output += f"Status: {telemetry['status']}\n"
+
+		# Progress information
+		if telemetry.get('overall_progress'):
+			output += f"Overall Progress: {telemetry['overall_progress']}\n"
+
+		if telemetry.get('epoch_progress'):
+			output += f"Epoch Progress: {telemetry['epoch_progress']}\n"
+
+		# Extraction phase
 		if telemetry.get('frames_extracted'):
 			output += f"Frames Extracted: {telemetry['frames_extracted']}\n"
 		if telemetry.get('landmarks_saved'):
 			output += f"Landmarks Saved: {telemetry['landmarks_saved']}\n"
 		if telemetry.get('current_file'):
 			output += f"File: {telemetry['current_file']}\n"
+
+		# Training phase
 		if telemetry.get('epoch'):
 			output += f"Epoch: {telemetry['epoch']}/{telemetry.get('total_epochs', '?')}\n"
-		if telemetry.get('loss'):
-			output += f"Loss: {telemetry['loss']:.4f}\n"
+
+		if telemetry.get('batch') and telemetry.get('total_batches'):
+			output += f"Batch: {telemetry['batch']}/{telemetry['total_batches']}\n"
+
+		if telemetry.get('loss') or telemetry.get('current_loss'):
+			loss_val = telemetry.get('loss', telemetry.get('current_loss'))
+			output += f"Loss: {loss_val}\n"
+
+		if telemetry.get('epoch_time'):
+			output += f"Epoch Time: {telemetry['epoch_time']}\n"
+
+		if telemetry.get('eta'):
+			output += f"ETA: {telemetry['eta']}\n"
+
+		if telemetry.get('device'):
+			output += f"Device: {telemetry['device']}\n"
+
+		# Final results
 		if telemetry.get('model_path'):
 			output += f"Model Path: {telemetry['model_path']}\n"
+
+		if telemetry.get('error'):
+			output += f"❌ Error: {telemetry['error']}\n"
 
 		return output.strip()
 
 	return str(status_data)
 
 
-def wrapped_start_identity_training(model_name: str, epochs: int, source_files: Any):
+def wrapped_start_identity_training(
+	model_name: str,
+	epochs: int,
+	source_type: str,
+	face_set_id: Optional[str] = None,
+	source_files: Any = None,
+	save_as_face_set: bool = False,
+	face_set_name: Optional[str] = None,
+	face_set_description: Optional[str] = None
+):
 	"""Wrapper to format identity training output with throttling"""
 	import time
 	last_update = 0
 	last_status = None
 
-	for status in training_core.start_identity_training(model_name, epochs, source_files):
+	# Determine parameters based on source type
+	if source_type == "Face Set":
+		training_kwargs = {
+			'model_name': model_name,
+			'epochs': epochs,
+			'face_set_id': face_set_id
+		}
+	else:  # "Upload Files"
+		training_kwargs = {
+			'model_name': model_name,
+			'epochs': epochs,
+			'source_files': source_files,
+			'save_as_face_set': save_as_face_set,
+			'new_face_set_name': face_set_name if save_as_face_set else None
+		}
+
+	for status in training_core.start_identity_training(**training_kwargs):
 		current_time = time.time()
 		formatted_status = format_training_status(status)
 
@@ -134,7 +189,9 @@ def render() -> gradio.Blocks:
 
 		with gradio.Row():
 			terminal.render()
-				
+
+		footer.render()
+
 	return layout
 
 
@@ -142,10 +199,19 @@ def listen() -> None:
 	training_source.listen()
 	training_target.listen()
 	terminal.listen()
-	
+
 	START_IDENTITY_BUTTON.click(
 		wrapped_start_identity_training,
-		inputs=[IDENTITY_MODEL_NAME, IDENTITY_EPOCHS, training_source.TRAINING_SOURCE_FILE],
+		inputs=[
+			IDENTITY_MODEL_NAME,
+			IDENTITY_EPOCHS,
+			training_source.SOURCE_TYPE_RADIO,
+			training_source.FACE_SET_DROPDOWN,
+			training_source.TRAINING_SOURCE_FILE,
+			training_source.SAVE_AS_FACE_SET_CHECKBOX,
+			training_source.FACE_SET_NAME,
+			training_source.FACE_SET_DESCRIPTION
+		],
 		outputs=[IDENTITY_STATUS]
 	)
 	STOP_IDENTITY_BUTTON.click(wrapped_stop_training, outputs=[IDENTITY_STATUS])

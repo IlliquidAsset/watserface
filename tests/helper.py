@@ -1,8 +1,8 @@
 import os
 import tempfile
 
-from facefusion.filesystem import create_directory, is_directory, is_file, remove_directory
-from facefusion.types import JobStatus
+from watserface.filesystem import create_directory, is_directory, is_file, remove_directory
+from watserface.types import JobStatus
 
 
 def is_test_job_file(file_path : str, job_status : JobStatus) -> bool:

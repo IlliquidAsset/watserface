@@ -1,5 +1,5 @@
-from facefusion.program import create_program
-from facefusion.program_helper import validate_args
+from watserface.program import create_program
+from watserface.program_helper import validate_args
 import sys
 
 # Mock sys.argv

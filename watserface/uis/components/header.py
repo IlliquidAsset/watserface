@@ -11,7 +11,7 @@ def render() -> None:
 			gradio.HTML("""
 			<div style="text-align: left; padding: 15px 0;">
 				<!-- Official WatserFace Logo -->
-				<svg width="280" height="70" viewBox="0 0 800 200" fill="none" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto;">
+				<svg width="320" height="70" viewBox="0 0 1200 200" fill="none" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto;">
 				  <g id="Mark">
 					<path d="M100 20C60 20 30 50 30 100C30 140 55 175 90 185V25C93 22 96 20 100 20Z" fill="#4D4DFF"/>
 					<path d="M110 10C114 10 118 11 122 13V175C155 165 180 130 180 90C180 40 150 10 110 10Z" fill="#FF00FF"/>

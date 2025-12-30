@@ -6,7 +6,7 @@ import traceback
 
 os.environ['OMP_NUM_THREADS'] = '1'
 
-from facefusion import core
+from watserface import core
 
 if __name__ == '__main__':
 	try:

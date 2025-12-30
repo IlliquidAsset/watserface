@@ -4,13 +4,13 @@ import tempfile
 
 import pytest
 
-import facefusion.ffmpeg
-from facefusion import process_manager, state_manager
-from facefusion.download import conditional_download
-from facefusion.ffmpeg import concat_video, extract_frames, merge_video, read_audio_buffer, replace_audio, restore_audio
-from facefusion.filesystem import copy_file
-from facefusion.temp_helper import clear_temp_directory, create_temp_directory, get_temp_file_path, resolve_temp_frame_paths
-from facefusion.types import EncoderSet
+import watserface.ffmpeg
+from watserface import process_manager, state_manager
+from watserface.download import conditional_download
+from watserface.ffmpeg import concat_video, extract_frames, merge_video, read_audio_buffer, replace_audio, restore_audio
+from watserface.filesystem import copy_file
+from watserface.temp_helper import clear_temp_directory, create_temp_directory, get_temp_file_path, resolve_temp_frame_paths
+from watserface.types import EncoderSet
 from .helper import get_test_example_file, get_test_examples_directory, get_test_output_file, prepare_test_output_directory
 
 

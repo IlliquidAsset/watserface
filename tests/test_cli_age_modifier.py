@@ -3,8 +3,8 @@ import sys
 
 import pytest
 
-from facefusion.download import conditional_download
-from facefusion.jobs.job_manager import clear_jobs, init_jobs
+from watserface.download import conditional_download
+from watserface.jobs.job_manager import clear_jobs, init_jobs
 from .helper import get_test_example_file, get_test_examples_directory, get_test_jobs_directory, get_test_output_file, is_test_output_file, prepare_test_output_directory
 
 

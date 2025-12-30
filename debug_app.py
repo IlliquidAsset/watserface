@@ -133,10 +133,10 @@ def main():
             import gradio
             logger.info(f"✅ Gradio {gradio.__version__} imported")
             
-            from facefusion import core
+            from watserface import core
             logger.info("✅ FaceFusion core imported")
             
-            from facefusion.uis.layouts import swap, training
+            from watserface.uis.layouts import swap, training
             logger.info("✅ UI layouts imported")
             
             # Test torch import

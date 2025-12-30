@@ -1,4 +1,4 @@
-from facefusion.download import get_static_download_size, ping_static_url, resolve_download_url_by_provider
+from watserface.download import get_static_download_size, ping_static_url, resolve_download_url_by_provider
 
 
 def test_get_static_download_size() -> None:

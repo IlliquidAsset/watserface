@@ -3,8 +3,8 @@ from unittest.mock import patch
 import pytest
 from onnxruntime import InferenceSession
 
-from facefusion import content_analyser, state_manager
-from facefusion.inference_manager import INFERENCE_POOL_SET, get_inference_pool
+from watserface import content_analyser, state_manager
+from watserface.inference_manager import INFERENCE_POOL_SET, get_inference_pool
 
 
 @pytest.fixture(scope = 'module', autouse = True)

@@ -5,7 +5,7 @@ from typing import Optional, Any
 import gradio
 
 from watserface import state_manager, logger
-from watserface.uis.components import about, modeler_source, modeler_target, modeler_options, terminal
+from watserface.uis.components import about, footer, modeler_source, modeler_target, modeler_options, terminal
 
 
 # Training Controls
@@ -205,6 +205,8 @@ def render() -> gradio.Blocks:
 		# Terminal for debugging
 		with gradio.Row():
 			terminal.render()
+
+		footer.render()
 
 	return layout
 

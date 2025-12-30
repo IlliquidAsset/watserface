@@ -13,16 +13,16 @@ def test_imports():
         print("🧪 Testing training component imports...")
         
         # Test UI components
-        from facefusion.uis.components import training_options, dataset_manager, model_trainer, training_progress
+        from watserface.uis.components import training_options, dataset_manager, model_trainer, training_progress
         print("✅ UI components imported successfully")
         
         # Test layouts
-        from facefusion.uis.layouts import training
+        from watserface.uis.layouts import training
         print("✅ Training layout imported successfully")
         
         # Test trainer (will show torch warning but that's expected)
         try:
-            from facefusion.trainers.instantid_trainer import InstantIDTrainer
+            from watserface.trainers.instantid_trainer import InstantIDTrainer
             print("✅ InstantID trainer imported successfully")
         except ImportError as e:
             print(f"⚠️  InstantID trainer import failed (expected): {e}")
@@ -40,7 +40,7 @@ def test_state_manager():
     """Test state manager functionality"""
     try:
         print("\n🧪 Testing state manager...")
-        from facefusion import state_manager
+        from watserface import state_manager
         
         # Test setting training state
         state_manager.init_item('training_model', 'InstantID')
@@ -67,7 +67,7 @@ def test_ui_rendering():
         
         # This would normally require Gradio to be running
         # For now, just test that the render functions exist
-        from facefusion.uis.components import training_options
+        from watserface.uis.components import training_options
         
         # Check if render function exists
         assert hasattr(training_options, 'render')

@@ -2,17 +2,19 @@
 Training Core Module.
 
 Orchestrates dataset extraction, landmark smoothing, and model training.
+Supports both legacy upload mode and new Face Set mode for reusable datasets.
 """
 
 import os
 import shutil
 import gradio
 import numpy as np
-from typing import Any, List
+from typing import Any, List, Optional
 from pathlib import Path
 
 from watserface import identity_profile, logger, state_manager
 from watserface.face_analyser import get_one_face
+from watserface.face_set import get_face_set_manager, FaceSetConfig
 from watserface.filesystem import is_video, resolve_file_paths, resolve_relative_path
 from watserface.training.dataset_extractor import extract_training_dataset
 from watserface.training.landmark_smoother import apply_smoothing_to_dataset
@@ -29,11 +31,26 @@ _training_stopped = False
 def start_identity_training(
 	model_name: str,
 	epochs: int,
-	source_files: Any,
+	source_files: Any = None,
+	face_set_id: Optional[str] = None,
+	save_as_face_set: bool = False,
+	new_face_set_name: Optional[str] = None,
 	progress=gradio.Progress()
 ):
 	"""
-	Train an identity model (InstantID) from source files.
+	Train an identity model (InstantID) from either Face Set or source files.
+
+	Args:
+		model_name: Name for the trained identity model
+		epochs: Number of training epochs
+		source_files: Source files for upload mode (optional)
+		face_set_id: Face Set ID for Face Set mode (optional)
+		save_as_face_set: Whether to save extracted data as Face Set
+		new_face_set_name: Name for new Face Set (auto-generated if not provided)
+		progress: Gradio progress callback
+
+	Yields:
+		(status_message, telemetry_dict) tuples
 	"""
 	global _training_stopped
 	_training_stopped = False
@@ -43,84 +60,165 @@ def start_identity_training(
 		if not model_name:
 			yield ["❌ Error: Please enter a model name.", telemetry]
 			return
-		if not source_files:
-			yield ["❌ Error: No source files uploaded.", telemetry]
-			return
 
 		logger.info(f"Starting Identity Training for '{model_name}'...", __name__)
 
-		dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_identity')
-		if os.path.exists(dataset_path):
-			shutil.rmtree(dataset_path)
-		os.makedirs(dataset_path, exist_ok=True)
+		# Determine dataset path based on mode
+		dataset_path = None
+		face_set_manager = get_face_set_manager()
 
-		source_list = source_files if isinstance(source_files, list) else [source_files]
-		source_paths = []
-		for source_file in source_list:
-			if hasattr(source_file, 'name'):
-				source_paths.append(source_file.name)
+		if face_set_id:
+			# MODE 1: Use existing Face Set
+			logger.info(f"Using Face Set: {face_set_id}", __name__)
+
+			face_set = face_set_manager.load_face_set(face_set_id)
+
+			if not face_set:
+				yield [f"❌ Error: Face Set '{face_set_id}' not found.", telemetry]
+				return
+
+			# Point to Face Set's frames directory
+			dataset_path = face_set_manager.get_face_set_frames_path(face_set_id)
+
+			telemetry['status'] = 'Using Face Set'
+			telemetry['face_set_id'] = face_set_id
+			telemetry['frames_count'] = face_set.frame_count
+			yield [f"✅ Using Face Set: {face_set.name} ({face_set.frame_count} frames)", telemetry]
+
+			# Skip extraction and smoothing - Face Set already has this done
+			logger.info("Skipping extraction - using Face Set frames", __name__)
+
+		elif source_files:
+			# MODE 2: Upload new files
+			logger.info(f"Upload mode: processing {len(source_files) if isinstance(source_files, list) else 1} file(s)", __name__)
+
+			source_list = source_files if isinstance(source_files, list) else [source_files]
+			source_paths = []
+			for source_file in source_list:
+				if hasattr(source_file, 'name'):
+					source_paths.append(source_file.name)
+				else:
+					source_paths.append(source_file)
+
+			if save_as_face_set:
+				# Create Face Set (handles extraction + smoothing)
+				face_set_name = new_face_set_name or f"Training_{model_name}_{int(__import__('time').time())}"
+
+				telemetry['status'] = 'Creating Face Set'
+				yield [f"Creating Face Set '{face_set_name}'...", telemetry]
+
+				try:
+					face_set = face_set_manager.create_face_set(
+						source_paths=source_paths,
+						name=face_set_name,
+						description=f"Created during training of {model_name}",
+						tags=["training", model_name],
+						progress=progress
+					)
+
+					dataset_path = face_set_manager.get_face_set_frames_path(face_set.id)
+					telemetry['face_set_created'] = True
+					telemetry['face_set_id'] = face_set.id
+					telemetry['frames_count'] = face_set.frame_count
+					yield [f"✅ Face Set created: {face_set.name} ({face_set.frame_count} frames)", telemetry]
+
+				except Exception as e:
+					logger.error(f"Failed to create Face Set: {e}", __name__)
+					yield [f"❌ Face Set creation failed: {e}", telemetry]
+					return
+
 			else:
-				source_paths.append(source_file)
+				# Traditional temp directory extraction (backward compatible)
+				dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_identity')
+				if os.path.exists(dataset_path):
+					shutil.rmtree(dataset_path)
+				os.makedirs(dataset_path, exist_ok=True)
 
-		logger.info(f"Extracting dataset from {len(source_paths)} source file(s)...", __name__)
+				logger.info(f"Extracting dataset from {len(source_paths)} source file(s)...", __name__)
 
-		# Step 1: Extraction
-		last_stats = {}
-		existing_frames = len([f for f in os.listdir(dataset_path) if f.endswith('.png')])
-		
-		if existing_frames > 0:
-			telemetry['status'] = 'Skipping Extraction'
-			telemetry['frames_extracted'] = existing_frames
-			yield [f"Using {existing_frames} existing frames. Skipping extraction...", telemetry]
-			last_stats['frames_extracted'] = existing_frames
+				# Step 1: Extraction
+				last_stats = {}
+				existing_frames = len([f for f in os.listdir(dataset_path) if f.endswith('.png')])
+
+				if existing_frames > 0:
+					telemetry['status'] = 'Skipping Extraction'
+					telemetry['frames_extracted'] = existing_frames
+					yield [f"Using {existing_frames} existing frames. Skipping extraction...", telemetry]
+					last_stats['frames_extracted'] = existing_frames
+				else:
+					for stats in extract_training_dataset(
+						source_paths=source_paths,
+						output_dir=dataset_path,
+						frame_interval=2,
+						max_frames=1000,
+						progress=progress
+					):
+						if _training_stopped:
+							yield ["Training Stopped.", telemetry]
+							return
+						telemetry.update(stats)
+						telemetry['status'] = 'Extracting'
+						last_stats = stats
+						yield [f"Extracting... {stats.get('frames_extracted', 0)} frames", telemetry]
+
+				if last_stats.get('frames_extracted', 0) == 0:
+					yield ["❌ Error: No faces found.", telemetry]
+					return
+
+				# Step 2: Smoothing
+				telemetry['status'] = 'Smoothing'
+				yield ["Applying smoothing...", telemetry]
+				apply_smoothing_to_dataset(dataset_path)
+
 		else:
-			for stats in extract_training_dataset(
-				source_paths=source_paths,
-				output_dir=dataset_path,
-				frame_interval=2,
-				max_frames=1000,
+			yield ["❌ Error: Must provide either face_set_id or source_files.", telemetry]
+			return
+
+		# Verify frames exist
+		if not os.path.exists(dataset_path):
+			yield [f"❌ Error: Dataset path does not exist: {dataset_path}", telemetry]
+			return
+
+		existing_frames = len([f for f in os.listdir(dataset_path) if f.endswith('.png')])
+		if existing_frames == 0:
+			yield ["❌ Error: No frames found in dataset.", telemetry]
+			return
+
+		logger.info(f"Dataset ready: {existing_frames} frames in {dataset_path}", __name__)
+
+		# Step 3: Train InstantID model
+		telemetry['status'] = 'Training'
+		onnx_path = ""
+
+		try:
+			for status_msg, train_stats in train_instantid_model(
+				dataset_dir=dataset_path,
+				model_name=model_name,
+				epochs=epochs,
+				batch_size=4,
+				learning_rate=0.0001,
+				save_interval=max(10, epochs // 5),
 				progress=progress
 			):
 				if _training_stopped:
 					yield ["Training Stopped.", telemetry]
 					return
-				telemetry.update(stats)
-				telemetry['status'] = 'Extracting'
-				last_stats = stats
-				yield [f"Extracting... {stats.get('frames_extracted', 0)} frames", telemetry]
 
-		if last_stats.get('frames_extracted', 0) == 0:
-			yield ["❌ Error: No faces found.", telemetry]
+				if 'model_path' in train_stats:
+					onnx_path = train_stats['model_path']
+				else:
+					telemetry.update(train_stats)
+					yield [status_msg, telemetry]
+		except Exception as e:
+			error_msg = f"❌ Training Error: {str(e)}"
+			logger.error(f"Identity training failed: {e}", __name__)
+			import traceback
+			traceback.print_exc()
+			telemetry['status'] = 'Failed'
+			telemetry['error'] = str(e)
+			yield [error_msg, telemetry]
 			return
 
-		# Step 2: Smoothing
-		telemetry['status'] = 'Smoothing'
-		yield ["Applying smoothing...", telemetry]
-		apply_smoothing_to_dataset(dataset_path)
-
-		# Step 3: Train InstantID model
-		telemetry['status'] = 'Training'
-		onnx_path = ""
-		
-		for status_msg, train_stats in train_instantid_model(
-			dataset_dir=dataset_path,
-			model_name=model_name,
-			epochs=epochs,
-			batch_size=4,
-			learning_rate=0.0001,
-			save_interval=max(10, epochs // 5),
-			progress=progress
-		):
-			if _training_stopped:
-				yield ["Training Stopped.", telemetry]
-				return
-			
-			if 'model_path' in train_stats:
-				onnx_path = train_stats['model_path']
-			else:
-				telemetry.update(train_stats)
-				yield [status_msg, telemetry]
-	
 		if not onnx_path:
 			yield ["❌ Training failed to produce model.", telemetry]
 			return
@@ -199,6 +297,11 @@ def start_identity_training(
 		except Exception as e:
 			logger.error(f"Failed to create identity profile: {e}", __name__)
 			telemetry['profile_saved'] = False
+
+		# Record Face Set usage if training from Face Set
+		if face_set_id:
+			face_set_manager.record_training_use(face_set_id, model_name, epochs)
+			logger.info(f"Recorded training use for Face Set {face_set_id}", __name__)
 
 		telemetry['status'] = 'Complete'
 		telemetry['model_path'] = final_model_path
