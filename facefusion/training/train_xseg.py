@@ -3,12 +3,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import numpy as np
-import onnx
-from typing import Any
+import time
+from typing import Any, Iterator, Tuple, Dict
 
 from facefusion import logger
 from facefusion.training.datasets.xseg_dataset import XSegDataset
+
 
 # --- Model Definition (Simplified U-Net) ---
 class DoubleConv(nn.Module):
@@ -25,6 +25,7 @@ class DoubleConv(nn.Module):
 
 	def forward(self, x):
 		return self.conv(x)
+
 
 class SimpleUNet(nn.Module):
 	def __init__(self, n_channels=3, n_classes=1): # Binary mask
@@ -48,6 +49,7 @@ class SimpleUNet(nn.Module):
 		x = self.up2(torch.cat([nn.Upsample(scale_factor=2)(x), x1], dim=1))
 		logits = self.outc(x)
 		return self.sigmoid(logits)
+
 
 # Correct U-Net logic for skip connections
 class UNet(nn.Module):
@@ -76,7 +78,7 @@ class UNet(nn.Module):
 		return torch.sigmoid(logits)
 
 
-def train_xseg_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, progress: Any) -> str:
+def train_xseg_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, progress: Any) -> Iterator[Tuple[str, Dict]]:
 	logger.info(f"Initializing XSeg training for {model_name}...", __name__)
 	
 	# Device
@@ -98,6 +100,8 @@ def train_xseg_model(dataset_dir: str, model_name: str, epochs: int, batch_size:
 	# Training Loop
 	model.train()
 	
+	start_time = time.time()
+
 	for epoch in progress.tqdm(range(epochs), desc="Training XSeg"):
 		epoch_loss = 0
 		for images, masks in dataloader:
@@ -116,14 +120,42 @@ def train_xseg_model(dataset_dir: str, model_name: str, epochs: int, batch_size:
 			epoch_loss += loss.item()
 		
 		avg_loss = epoch_loss / len(dataloader)
-		if epoch % 5 == 0:
-			logger.debug(f"Epoch {epoch}/{epochs} - Loss: {avg_loss:.4f}", __name__)
+
+		# Telemetry
+		elapsed = time.time() - start_time
+		avg_time_per_epoch = elapsed / (epoch + 1)
+		remaining_epochs = epochs - (epoch + 1)
+		eta_seconds = avg_time_per_epoch * remaining_epochs
+
+		telemetry = {
+			'epoch': epoch + 1,
+			'total_epochs': epochs,
+			'loss': f"{avg_loss:.4f}",
+			'eta': f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s"
+		}
+
+		if epoch % 5 == 0 or epoch == epochs - 1:
+			logger.debug(f"Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", __name__)
+
+		yield f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", telemetry
 
 	# Export to ONNX
 	output_path = os.path.join(dataset_dir, f"{model_name}.onnx")
 	dummy_input = torch.randn(1, 3, 256, 256).to(device)
 	
 	logger.info(f"Exporting model to {output_path}...", __name__)
+
+	# Final Report
+	total_time = time.time() - start_time
+	final_report = {
+		'status': 'Complete (Saved)',
+		'total_epochs': epochs,
+		'total_time': f"{int(total_time // 60)}m {int(total_time % 60)}s",
+		'final_loss': f"{avg_loss:.4f}"
+	}
+	yield "Exporting ONNX model... (This may take a moment)", final_report
+
+	model.eval()
 	torch.onnx.export(
 		model, 
 		dummy_input, 
@@ -133,4 +165,5 @@ def train_xseg_model(dataset_dir: str, model_name: str, epochs: int, batch_size:
 		dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
 	)
 	
-	return output_path
+	final_report['model_path'] = output_path
+	yield f"Exported to {output_path}", final_report
