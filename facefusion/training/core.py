@@ -7,11 +7,10 @@ Orchestrates dataset extraction, landmark smoothing, and model training.
 import os
 import shutil
 import gradio
-from typing import Any, List
-from pathlib import Path
+from typing import Any
 
 from facefusion import logger, state_manager
-from facefusion.filesystem import is_video, resolve_relative_path
+from facefusion.filesystem import resolve_relative_path
 from facefusion.training.dataset_extractor import extract_training_dataset
 from facefusion.training.landmark_smoother import apply_smoothing_to_dataset
 from facefusion.training.train_instantid import train_instantid_model
@@ -180,7 +179,7 @@ def start_occlusion_training(
 
 		target_path = target_file.name if hasattr(target_file, 'name') else target_file
 
-		logger.info(f"Extracting dataset from target file...", __name__)
+		logger.info("Extracting dataset from target file...", __name__)
 
 		# Step 1: Extraction
 		last_stats = {}
@@ -217,9 +216,9 @@ def start_occlusion_training(
 
 		# Step 4: Training
 		telemetry['status'] = 'Training'
+		onnx_path = ""
 		
-		# TODO: Make train_xseg_model yield updates too
-		onnx_path = train_xseg_model(
+		for status_msg, train_stats in train_xseg_model(
 			dataset_dir=dataset_path,
 			model_name=model_name,
 			epochs=epochs,
@@ -227,7 +226,20 @@ def start_occlusion_training(
 			learning_rate=0.001,
 			save_interval=max(10, epochs // 5),
 			progress=progress
-		)
+		):
+			if _training_stopped:
+				yield "Training Stopped.", telemetry
+				return
+
+			if 'model_path' in train_stats:
+				onnx_path = train_stats['model_path']
+			else:
+				telemetry.update(train_stats)
+				yield status_msg, telemetry
+
+		if not onnx_path:
+			yield "❌ Training failed to produce model.", telemetry
+			return
 
 		# Copy...
 		trained_models_dir = resolve_relative_path('../.assets/models/trained')
@@ -247,7 +259,7 @@ def start_occlusion_training(
 
 		telemetry['status'] = 'Complete'
 		telemetry['model_path'] = final_model_path
-		yield f"✅ Occlusion Training Complete.", telemetry
+		yield "✅ Occlusion Training Complete.", telemetry
 
 	except Exception as e:
 		logger.error(f"Occlusion training failed: {e}", __name__)

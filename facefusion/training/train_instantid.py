@@ -1,13 +1,15 @@
 import os
+import shutil
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-import numpy as np
 import cv2
-from typing import Any
+from typing import Any, Iterator, Tuple, Dict
+import time
 
 from facefusion import logger
+
 
 # --- SimSwap / Ghost Architecture Stub ---
 # A simplified generator structure for fine-tuning
@@ -21,8 +23,10 @@ class ResidualBlock(nn.Module):
 			nn.Conv2d(channels, channels, 3, padding=1),
 			nn.BatchNorm2d(channels)
 		)
+
 	def forward(self, x):
 		return x + self.conv(x)
+
 
 class IdentityGenerator(nn.Module):
 	def __init__(self):
@@ -56,19 +60,21 @@ class IdentityGenerator(nn.Module):
 		x = self.dec(x)
 		return x
 
+
 # Dataset
 class FaceDataset(Dataset):
 	def __init__(self, dataset_dir):
 		self.files = [os.path.join(dataset_dir, f) for f in os.listdir(dataset_dir) if f.endswith('.png')]
-	def __len__(self): return len(self.files)
+
+	def __len__(self):
+		return len(self.files)
+
 	def __getitem__(self, idx):
 		img = cv2.imread(self.files[idx])
-		img = cv2.resize(img, (128, 128)) # Standard SimSwap size
+		img = cv2.resize(img, (128, 128))  # Standard SimSwap size
 		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 		return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
 
-import time
-from typing import Any, Iterator, Tuple, Dict
 
 def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, progress: Any) -> Iterator[Tuple[str, Dict]]:
 	logger.info(f"Initializing Identity Training (SimSwap Fine-tune) for {model_name}...", __name__)
@@ -136,13 +142,13 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			
 			# Log to terminal every epoch or every 10%
 			if epoch % max(1, epochs // 10) == 0 or epoch == epochs - 1:
-				logger.info(f"Training Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", __name__)
+				logger.info(f"Training Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", __name__)
 				
 			# Save Checkpoint periodically
 			if (epoch + 1) % save_interval == 0:
 				torch.save(model.state_dict(), checkpoint_path)
 				
-			yield f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", telemetry
+			yield f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}", telemetry
 
 	except GeneratorExit:
 		logger.info("Training interrupted. Saving current checkpoint...", __name__)
@@ -182,4 +188,5 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			dynamic_axes={'target': {0: 'batch'}, 'output': {0: 'batch'}}
 		)
 		
+		final_report['model_path'] = output_path
 		yield f"Exported to {output_path}", final_report
