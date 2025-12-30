@@ -199,7 +199,10 @@ trained_model_file_paths = resolve_file_paths(resolve_relative_path('../.assets/
 if trained_model_file_paths:
 	for model_file_path in trained_model_file_paths:
 		model_name = get_file_name(model_file_path)
-		face_swapper_set[model_name] = [ '256x256', '512x512' ] # Default resolutions
+		if 'xseg' in model_name.lower() or 'occlusion' in model_name.lower():
+			face_occluder_models.append(model_name) #type:ignore
+		else:
+			face_swapper_set[model_name] = [ '256x256', '512x512' ] # Default resolutions
 
 face_swapper_models : List[FaceSwapperModel] = list(face_swapper_set.keys())
 frame_colorizer_models : List[FrameColorizerModel] = [ 'ddcolor', 'ddcolor_artistic', 'deoldify', 'deoldify_artistic', 'deoldify_stable' ]

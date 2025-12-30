@@ -179,8 +179,7 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			output_path,
 			input_names=['target', 'source_embedding'],
 			output_names=['output'],
-			dynamic_axes={'target': {0: 'batch'}, 'output': {0: 'batch'}},
-			opset_version=14 
+			dynamic_axes={'target': {0: 'batch'}, 'output': {0: 'batch'}}
 		)
 		
 		yield f"Exported to {output_path}", final_report

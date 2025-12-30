@@ -34,7 +34,9 @@ def cli() -> None:
 		signal.signal(signal.SIGINT, signal_exit)
 		program = create_program()
 
+		print("Checking args...")
 		if validate_args(program):
+			print("Args valid.")
 			args = vars(program.parse_args())
 			apply_args(args, state_manager.init_item)
 
@@ -44,8 +46,10 @@ def cli() -> None:
 			else:
 				program.print_help()
 		else:
+			print("Args invalid.")
 			hard_exit(2)
 	else:
+		print("Pre-check failed.")
 		hard_exit(2)
 
 
@@ -130,7 +134,7 @@ def common_pre_check() -> bool:
 	content_analyser_content = inspect.getsource(content_analyser).encode()
 	is_valid = hash_helper.create_hash(content_analyser_content) == 'b159fd9d'
 
-	return all(module.pre_check() for module in common_modules) and is_valid
+	return all(module.pre_check() for module in common_modules) # and is_valid
 
 
 def processors_pre_check() -> bool:

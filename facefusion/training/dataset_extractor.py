@@ -63,7 +63,8 @@ def _extract_video_gen(video_path: str, output_dir: str, interval: int, max_fram
 				with open(os.path.join(output_dir, landmark_filename), 'w') as f:
 					json.dump(landmarks, f)
 				stats['landmarks_saved'] += 1
-				yield stats
+				if stats['frames_extracted'] % 5 == 0:
+					yield stats
 
 def _extract_image_gen(image_path: str, output_dir: str, stats: Dict[str, Any], progress: Any):
 	frame = read_image(image_path)
