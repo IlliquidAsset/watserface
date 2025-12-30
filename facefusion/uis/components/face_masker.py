@@ -5,6 +5,7 @@ import gradio
 import facefusion.choices
 from facefusion import face_masker, state_manager, wording
 from facefusion.common_helper import calc_float_step, calc_int_step
+from facefusion.filesystem import get_file_name, resolve_file_paths, resolve_relative_path
 from facefusion.types import FaceMaskArea, FaceMaskRegion, FaceMaskType, FaceOccluderModel, FaceParserModel
 from facefusion.uis.core import register_ui_component
 
@@ -42,6 +43,7 @@ def render() -> None:
 			label = wording.get('uis.face_occluder_model_dropdown'),
 			choices = facefusion.choices.face_occluder_models,
 			value = state_manager.get_item('face_occluder_model'),
+			info = wording.get('help.face_occluder_model'),
 			scale = 8
 		)
 		FACE_OCCLUDER_REFRESH_BUTTON = gradio.Button(
@@ -54,6 +56,7 @@ def render() -> None:
 			label = wording.get('uis.face_parser_model_dropdown'),
 			choices = facefusion.choices.face_parser_models,
 			value = state_manager.get_item('face_parser_model'),
+			info = wording.get('help.face_parser_model'),
 			scale = 9
 		)
 	FACE_MASK_TYPES_CHECKBOX_GROUP = gradio.CheckboxGroup(
@@ -79,6 +82,7 @@ def render() -> None:
 		minimum = facefusion.choices.face_mask_blur_range[0],
 		maximum = facefusion.choices.face_mask_blur_range[-1],
 		value = state_manager.get_item('face_mask_blur'),
+		info = wording.get('help.face_mask_blur'),
 		visible = has_box_mask
 	)
 	with gradio.Group():
@@ -89,6 +93,7 @@ def render() -> None:
 				minimum = facefusion.choices.face_mask_padding_range[0],
 				maximum = facefusion.choices.face_mask_padding_range[-1],
 				value = state_manager.get_item('face_mask_padding')[0],
+				info = wording.get('help.face_mask_padding'),
 				visible = has_box_mask
 			)
 			FACE_MASK_PADDING_RIGHT_SLIDER = gradio.Slider(
@@ -97,6 +102,7 @@ def render() -> None:
 				minimum = facefusion.choices.face_mask_padding_range[0],
 				maximum = facefusion.choices.face_mask_padding_range[-1],
 				value = state_manager.get_item('face_mask_padding')[1],
+				info = wording.get('help.face_mask_padding'),
 				visible = has_box_mask
 			)
 		with gradio.Row():
@@ -106,6 +112,7 @@ def render() -> None:
 				minimum = facefusion.choices.face_mask_padding_range[0],
 				maximum = facefusion.choices.face_mask_padding_range[-1],
 				value = state_manager.get_item('face_mask_padding')[2],
+				info = wording.get('help.face_mask_padding'),
 				visible = has_box_mask
 			)
 			FACE_MASK_PADDING_LEFT_SLIDER = gradio.Slider(
@@ -114,6 +121,7 @@ def render() -> None:
 				minimum = facefusion.choices.face_mask_padding_range[0],
 				maximum = facefusion.choices.face_mask_padding_range[-1],
 				value = state_manager.get_item('face_mask_padding')[3],
+				info = wording.get('help.face_mask_padding'),
 				visible = has_box_mask
 			)
 	register_ui_component('face_occluder_model_dropdown', FACE_OCCLUDER_MODEL_DROPDOWN)
