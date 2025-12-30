@@ -1,0 +1,113 @@
+"""
+Modeler Source Component - Identity Profile Selector
+"""
+from typing import Optional, Tuple
+import gradio
+
+from watserface import state_manager, wording, logger
+from watserface.identity_profile import get_identity_manager
+from watserface.uis.core import register_ui_component
+
+
+MODELER_SOURCE_PROFILE_DROPDOWN: Optional[gradio.Dropdown] = None
+MODELER_SOURCE_STATUS: Optional[gradio.Textbox] = None
+MODELER_SOURCE_INFO: Optional[gradio.Markdown] = None
+
+
+def render() -> None:
+	"""Render identity profile selector for Modeler tab"""
+	global MODELER_SOURCE_PROFILE_DROPDOWN, MODELER_SOURCE_STATUS, MODELER_SOURCE_INFO
+
+	with gradio.Column():
+		gradio.Markdown(
+			"""
+			### 👤 Source Identity Profile
+			Select a trained identity profile to use as the source for paired training.
+
+			**💡 Tips:**
+			- Only profiles trained in the Training tab will appear here
+			- Profile should represent the person whose face you want to swap
+			- For best results, use high-quality identity profiles (3+ source images)
+			"""
+		)
+
+		# Get available identity profiles
+		profiles = get_identity_manager().source_intelligence.list_profiles()
+		profile_choices = [(p.name, p.id) for p in profiles]
+
+		MODELER_SOURCE_PROFILE_DROPDOWN = gradio.Dropdown(
+			label="🎯 Select Identity Profile",
+			choices=profile_choices,
+			value=state_manager.get_item('source_profile_id_for_modeler'),
+			interactive=True,
+			elem_id="modeler_source_profile_dropdown",
+			info="Choose the source identity to train against the target"
+		)
+
+		# Status display
+		MODELER_SOURCE_STATUS = gradio.Textbox(
+			label="Status",
+			value="👆 Select a source identity profile to continue",
+			interactive=False,
+			lines=2,
+			elem_id="modeler_source_status"
+		)
+
+		# Profile information display
+		MODELER_SOURCE_INFO = gradio.Markdown(
+			"",
+			visible=False,
+			elem_id="modeler_source_info"
+		)
+
+	# Register components
+	register_ui_component('modeler_source_profile_dropdown', MODELER_SOURCE_PROFILE_DROPDOWN)
+	register_ui_component('modeler_source_status', MODELER_SOURCE_STATUS)
+	register_ui_component('modeler_source_info', MODELER_SOURCE_INFO)
+
+
+def listen() -> None:
+	"""Set up event listeners"""
+	if MODELER_SOURCE_PROFILE_DROPDOWN and MODELER_SOURCE_STATUS and MODELER_SOURCE_INFO:
+		MODELER_SOURCE_PROFILE_DROPDOWN.change(
+			update_source_profile,
+			inputs=[MODELER_SOURCE_PROFILE_DROPDOWN],
+			outputs=[MODELER_SOURCE_STATUS, MODELER_SOURCE_INFO]
+		)
+
+
+def update_source_profile(profile_id: str = None) -> Tuple[str, str]:
+	"""Update state when source profile is selected"""
+	if not profile_id:
+		state_manager.set_item('source_profile_id_for_modeler', None)
+		return (
+			"👆 Select a source identity profile to continue",
+			""
+		)
+
+	manager = get_identity_manager()
+	profile = manager.source_intelligence.load_profile(profile_id)
+
+	if profile:
+		# Set the global state for modeler source profile
+		state_manager.set_item('source_profile_id_for_modeler', profile.id)
+
+		status_msg = f"✅ Loaded source identity: {profile.name}"
+
+		# Profile Info
+		stats = profile.quality_stats
+		profile_info = f"""
+### 🆔 Source Profile: {profile.name}
+
+- **Created**: {profile.created_at}
+- **Sources**: {stats.get('total_processed', 0)} files
+- **Embeddings**: {stats.get('final_embedding_count', 0)}
+- **Quality**: {'High' if stats.get('final_embedding_count', 0) > 10 else 'Medium' if stats.get('final_embedding_count', 0) > 3 else 'Low'}
+
+**✅ Ready for paired training**
+"""
+
+		return (status_msg, profile_info)
+	else:
+		state_manager.set_item('source_profile_id_for_modeler', None)
+		return ("❌ Failed to load profile", "")
