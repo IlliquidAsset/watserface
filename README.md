@@ -47,6 +47,25 @@ This Space now includes a dedicated **Training** tab that allows you to:
 - Learn about InstantID and other advanced face training techniques
 
 **Note**: Full training requires additional dependencies. The training tab provides comprehensive guidance for setting up training in your own environment.
+
+## Methodology: Generative Inpainting for Occlusion Handling
+
+### Abstract
+This section outlines a novel approach to addressing high-frequency occlusion artifacts in face-swapping pipelines. By integrating generative inpainting, we aim to bridge the semantic gap between segmentation targets (XSeg) and source identity fragments. This method specifically targets dynamic mesh deformations—such as lip compression during eating—that are frequently underrepresented in standard training distributions.
+
+### Problem Statement
+Traditional face-swapping models rely on static or rigid training data, which often fails to generalize to extreme dynamic expressions or interactions with external objects. A canonical failure case is the "corndog example": when a subject eats, the lips crease and wrinkle around the object. Standard models often treat these dynamic occlusions as noise or fail to render the complex interaction between the lips and the object, resulting in visual artifacts or loss of identity coherence in the deformed region.
+
+### Methodology
+Our approach draws inspiration from professional image editing workflows (e.g., Adobe Photoshop), employing a layered compositing strategy down to the pixel level. The pipeline integrates three core components:
+
+1. **XSeg Targets (Occlusion Masks):** High-precision segmentation masks that identify static and dynamic occlusions.
+2. **Identity Fragments:** Feature maps extracted from the source identity.
+3. **Generative Inpainting Bridge:** A generative model acts as the cohesive layer. Instead of simply overlaying the source face onto the target, the inpainting module synthesizes the boundary regions where the XSeg mask meets the identity fragment. This allows for the hallucination of realistic creasing, lighting, and physics-based interactions (like the lip deformation around food) that are not explicitly present in the source identity's latent space.
+
+### Conclusion
+By treating face swapping as a layered composition problem rather than a direct translation task, this methodology effectively bridges the gap between rigid model weights and fluid real-world dynamics. The result is a more robust synthesis capable of handling complex interactions and partial occlusions with high fidelity.
+
 Preview
 -------
 
