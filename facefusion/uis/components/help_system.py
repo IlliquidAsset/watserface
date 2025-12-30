@@ -230,7 +230,7 @@ def render_guided_tour() -> None:
     with gradio.Column(visible=True) as tour_panel:
         gradio.Markdown(
             """
-            ## 🎉 Welcome to FaceFusion!
+            ## 🎉 Welcome to WatserFace!
             
             **New to face swapping? Here's a quick guide to get started:**
             
@@ -284,7 +284,7 @@ def setup_help_system_listeners() -> None:
             shortcuts_button.click(
                 fn=lambda: "Keyboard shortcuts modal opened via JavaScript",
                 outputs=[],
-                js="() => { if (window.FaceFusionA11y) window.FaceFusionA11y.showKeyboardShortcuts(); }"
+                js="() => { if (window.WatserFaceA11y) window.WatserFaceA11y.showKeyboardShortcuts(); }"
             )
 
 

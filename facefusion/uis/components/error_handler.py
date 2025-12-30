@@ -119,7 +119,7 @@ class ErrorHandler:
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-        self.logger = logging.getLogger('FaceFusion_ErrorHandler')
+        self.logger = logging.getLogger('WatserFace_ErrorHandler')
     
     def handle_error(
         self, 

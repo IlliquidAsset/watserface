@@ -3,11 +3,11 @@ from typing import Optional
 METADATA =\
 {
 	'name': 'WatserFace',
-	'description': 'Industry leading face manipulation platform',
-	'version': '3.3.5',
+	'description': 'Advanced face manipulation and training platform',
+	'version': '0.10.0',
 	'license': 'OpenRAIL-AS',
-	'author': 'Henry Ruhs',
-	'url': 'https://facefusion.io'
+	'author': 'IlliquidAsset (based on FaceFusion by Henry Ruhs)',
+	'url': 'https://github.com/IlliquidAsset/facefusion'
 }
 
 

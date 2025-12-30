@@ -1,57 +1,92 @@
 ---
-title: Facefusion3.1
-emoji: 💻
-colorFrom: green
-colorTo: red
+title: WatserFace
+emoji: 🎭
+colorFrom: purple
+colorTo: pink
 sdk: docker
 app_port: 8080
 pinned: false
-license: mit
-short_description: faceswap
+license: other
+license_name: openrail-as
+short_description: Advanced face manipulation and training platform
 startup_duration_timeout: 5m
 custom_headers:
   cross-origin-embedder-policy: require-corp
   cross-origin-opener-policy: same-origin
 ---
 
-FaceFusion
-==========
+# WatserFace
 
-> Industry leading face manipulation platform with dataset training capabilities.
+> "Who's that again?"
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/facefusion/facefusion/ci.yml.svg?branch=master)](https://github.com/facefusion/facefusion/actions?query=workflow:ci)
-[![Coverage Status](https://img.shields.io/coveralls/facefusion/facefusion.svg)](https://coveralls.io/r/facefusion/facefusion)
-![License](https://img.shields.io/badge/license-OpenRAIL--AS-green)
+**Advanced face manipulation and training platform with comprehensive dataset training capabilities.**
 
-## 🚀 Development Environment (HuggingFace Spaces)
+**Based on [FaceFusion](https://github.com/facefusion/facefusion) by Henry Ruhs**
 
-### Quick Start
-1. **Launch**: HuggingFace Spaces automatically runs `bash dev_start.sh`
-2. **Authenticate**: Run `claude-code auth login` in VS Code terminal
-3. **Organization ID**: `7d37921e-6314-4b53-a02d-7ea9040b3afb`
-4. **Access VS Code**: Available on port 8080 after startup
+---
 
-### Development Setup Details
-- **Environment**: VS Code web server with Claude Code CLI
-- **Installation**: Automatic (Node.js, code-server, Claude Code)
-- **Session Tracking**: Progress saved in `.claude-session/` directory
-- **Primary Documentation**: See `prd.MD` for complete development plan
+[![License](https://img.shields.io/badge/license-OpenRAIL--AS-green)](LICENSE.md)
+![Version](https://img.shields.io/badge/version-0.10.0-blue)
+[![Original Project](https://img.shields.io/badge/based%20on-FaceFusion-orange)](https://github.com/facefusion/facefusion)
 
-## 🆕 New Features
+## ⚠️ Important Notice
 
-### Dataset Training Tab
-This Space now includes a dedicated **Training** tab that allows you to:
-- Upload and manage training datasets
-- Configure training parameters for custom face models
-- Monitor training progress (when dependencies are available)
-- Learn about InstantID and other advanced face training techniques
+WatserFace is a derivative of FaceFusion with **modified safety features**:
+- **NSFW content detection**: Disabled for research and development use
+- **Tamper validation**: Bypassed to enable code customization
 
-**Note**: Full training requires additional dependencies. The training tab provides comprehensive guidance for setting up training in your own environment.
+**Users are fully responsible for ethical and legal compliance.**
+See [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md) for detailed guidelines.
+
+## What is WatserFace?
+
+WatserFace extends the original FaceFusion face manipulation platform with production-ready training infrastructure:
+
+### From Original FaceFusion
+- ✅ Industry-leading face swapping technology
+- ✅ Real-time preview with multiple processor types
+- ✅ Batch processing for videos and images
+- ✅ Advanced face selection and masking
+- ✅ Hardware acceleration (CUDA/MPS/CPU)
+
+### New in WatserFace v0.10.0
+- 🎓 **Training Tab**: Full UI for dataset management and model training
+- 📊 **MediaPipe Pipeline**: Extract and smooth 478-landmark facial data
+- 🎭 **XSeg Training**: Custom occlusion mask generation with U-Net
+- 🆔 **InstantID Training**: Identity-preserving face adaptation
+- 🖼️ **Annotation UI**: Manual mask painting with Gradio ImageEditor
+- ⚡ **MPS Support**: Optimized for Apple Silicon (30% faster face prediction)
+- 📈 **Real-time Progress**: Live telemetry for training workflows
+
+## Features
+
+### Face Swapping
+- High-fidelity face replacement with identity preservation
+- Multiple swapper models (inswapper, simswap, etc.)
+- Face enhancement and expression restoration
+- Age modification and frame enhancement
+- Lip syncing capabilities
+
+### Training Infrastructure
+- **Identity Training**: Train custom InstantID models from your own datasets
+- **Occlusion Training**: Train XSeg models for precise masking
+- **Dataset Extraction**: Automated frame sampling with MediaPipe landmarks
+- **Temporal Smoothing**: Jitter reduction for video sequences
+- **ONNX Export**: Production-ready model output
+- **Auto-Registration**: Trained models automatically appear in Swap tab
+
+### Advanced Features
+- 478-point MediaPipe facial landmarks
+- Savitzky-Golay temporal smoothing
+- Auto-mask generation from landmark convex hull
+- Device auto-detection (MPS/CUDA/CPU)
+- Batch processing with job management
+- Multiple output formats and resolutions
 
 ## Methodology: Generative Inpainting for Occlusion Handling
 
 ### Abstract
-This section outlines a novel approach to addressing high-frequency occlusion artifacts in face-swapping pipelines. By integrating generative inpainting, we aim to bridge the semantic gap between segmentation targets (XSeg) and source identity fragments. This method specifically targets dynamic mesh deformations—such as lip compression during eating—that are frequently underrepresented in standard training distributions.
+This section outlines a novel approach to addressing high-frequency occlusion artifacts in face-swapping pipelines. By integrating generative inpainting, we bridge the semantic gap between segmentation targets (XSeg) and source identity fragments. This method specifically targets dynamic mesh deformations—such as lip compression during eating—that are frequently underrepresented in standard training distributions.
 
 ### Problem Statement
 Traditional face-swapping models rely on static or rigid training data, which often fails to generalize to extreme dynamic expressions or interactions with external objects. A canonical failure case is the "corndog example": when a subject eats, the lips crease and wrinkle around the object. Standard models often treat these dynamic occlusions as noise or fail to render the complex interaction between the lips and the object, resulting in visual artifacts or loss of identity coherence in the deformed region.
@@ -66,54 +101,189 @@ Our approach draws inspiration from professional image editing workflows (e.g., 
 ### Conclusion
 By treating face swapping as a layered composition problem rather than a direct translation task, this methodology effectively bridges the gap between rigid model weights and fluid real-world dynamics. The result is a more robust synthesis capable of handling complex interactions and partial occlusions with high fidelity.
 
-Preview
--------
+## Installation
 
-![Preview](https://raw.githubusercontent.com/facefusion/facefusion/master/.github/preview.png?sanitize=true)
+### Requirements
+- Python 3.11+
+- CUDA 12.1+ (NVIDIA) or MPS (Apple Silicon)
+- 8GB+ RAM (16GB+ recommended for training)
 
+### Quick Start
 
-Installation
-------------
+```bash
+# Clone the repository
+git clone https://github.com/IlliquidAsset/facefusion.git
+cd facefusion
 
-Be aware, the [installation](https://docs.facefusion.io/installation) needs technical skills and is not recommended for beginners. In case you are not comfortable using a terminal, our [Windows Installer](http://windows-installer.facefusion.io) and [macOS Installer](http://macos-installer.facefusion.io) get you started.
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
+# Install dependencies
+pip install -r requirements.txt
 
-Usage
------
+# For training capabilities
+pip install -r requirements-training.txt
 
-Run the command:
-
-```
-python facefusion.py [commands] [options]
-
-options:
-  -h, --help                                      show this help message and exit
-  -v, --version                                   show program's version number and exit
-
-commands:
-    run                                           run the program
-    headless-run                                  run the program in headless mode
-    batch-run                                     run the program in batch mode
-    force-download                                force automate downloads and exit
-    benchmark                                     benchmark the program
-    job-list                                      list jobs by status
-    job-create                                    create a drafted job
-    job-submit                                    submit a drafted job to become a queued job
-    job-submit-all                                submit all drafted jobs to become a queued jobs
-    job-delete                                    delete a drafted, queued, failed or completed job
-    job-delete-all                                delete all drafted, queued, failed and completed jobs
-    job-add-step                                  add a step to a drafted job
-    job-remix-step                                remix a previous step from a drafted job
-    job-insert-step                               insert a step to a drafted job
-    job-remove-step                               remove a step from a drafted job
-    job-run                                       run a queued job
-    job-run-all                                   run all queued jobs
-    job-retry                                     retry a failed job
-    job-retry-all                                 retry all failed jobs
+# Run the application
+bash fast_run.sh
+# Or: python watserface.py run
 ```
 
+### Docker (Coming Soon)
+```bash
+docker pull illiquidasset/watserface:latest
+docker run -p 7860:7860 watserface:latest
+```
 
-Documentation
--------------
+## Usage
 
-Read the [documentation](https://docs.facefusion.io) for a deep dive.
+### Face Swapping
+
+```bash
+# Swap face in single image
+python watserface.py run \
+  -s path/to/source.jpg \
+  -t path/to/target.jpg \
+  -o path/to/output.jpg
+
+# Swap face in video
+python watserface.py run \
+  -s path/to/source.jpg \
+  -t path/to/target.mp4 \
+  -o path/to/output.mp4
+```
+
+### Training Workflow
+
+1. **Launch UI**:
+   ```bash
+   python watserface.py run
+   ```
+
+2. **Navigate to Training Tab** (ensure `ui_layouts = swap training` in `watserface.ini`)
+
+3. **Identity Training**:
+   - Upload source videos/images (your face dataset)
+   - Set model name and epochs
+   - Click "Start Identity Training"
+   - Trained model auto-registers in Swap tab
+
+4. **Occlusion Training** (Optional):
+   - Upload target video (containing occlusions)
+   - Optionally annotate masks with XSeg Annotator
+   - Set model name and epochs
+   - Click "Start Occlusion Training"
+
+5. **Use Trained Models**:
+   - Refresh app or click refresh button in Swap tab
+   - Select your custom model from dropdown
+   - Perform face swap as usual
+
+## Command Line Options
+
+```bash
+python watserface.py run --help
+
+# Common options:
+  -s SOURCE_PATHS    Source image(s) containing face to swap
+  -t TARGET_PATH     Target image/video to swap face onto
+  -o OUTPUT_PATH     Output file path
+
+  --face-detector-model {many,retinaface,scrfd,yolo_face}
+  --face-landmarker-model {many,2dfan4,peppa_wutz,mediapipe}
+  --face-swapper-model [model_name]  # Use custom trained models
+
+  --execution-device-id DEVICE_ID
+  --execution-providers {cpu,cuda,mps}
+```
+
+## 🚀 Development Environment (HuggingFace Spaces)
+
+### Quick Start
+1. **Launch**: HuggingFace Spaces automatically runs `bash dev_start.sh`
+2. **Authenticate**: Run `claude-code auth login` in VS Code terminal
+3. **Organization ID**: `7d37921e-6314-4b53-a02d-7ea9040b3afb`
+4. **Access VS Code**: Available on port 8080 after startup
+
+### Development Setup
+- **Environment**: VS Code web server with Claude Code CLI
+- **Installation**: Automatic (Node.js, code-server, Claude Code)
+- **Session Tracking**: Progress saved in `.claude-session/` directory
+- **Documentation**: See `REBRANDING_PRD.md` for project roadmap
+
+## Brand Guidelines
+
+See [brand guidelines.md](brand%20guidelines.md) for WatserFace visual identity:
+- **Colors**: Glitch Magenta (#FF00FF), Deep Blurple (#4D4DFF), Electric Lime (#CCFF00)
+- **Typography**: Righteous (display), JetBrains Mono (body)
+- **Logo**: Split-face mark with vertical offset
+
+## Attribution
+
+### Original FaceFusion
+- **Author**: Henry Ruhs
+- **Repository**: https://github.com/facefusion/facefusion
+- **Version at Fork**: 3.3.4
+- **License**: OpenRAIL-AS
+- **Copyright**: (c) 2025 Henry Ruhs
+
+### WatserFace Modifications
+- **Maintainer**: IlliquidAsset
+- **Training Extensions**: 26 files, 2,400+ lines of code
+- **Version**: 0.10.0 (independent fork versioning)
+- **License**: OpenRAIL-AS (maintains original restrictions)
+- **Copyright**: (c) 2025 IlliquidAsset (modifications only)
+
+See [ATTRIBUTION.md](ATTRIBUTION.md) for complete attribution details.
+
+## License
+
+OpenRAIL-AS (Open Responsible AI License - Academic Scholars)
+
+This derivative work maintains all use-based restrictions from the original FaceFusion project. Users MUST NOT use this software for purposes that:
+- Violate fundamental human rights
+- Enable discrimination or harassment
+- Cause physical or mental harm
+- Facilitate illegal activities
+- Create non-consensual intimate imagery
+
+See [LICENSE.md](LICENSE.md) for full license text.
+See [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md) for ethical guidelines.
+
+## Documentation
+
+- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
+- [ATTRIBUTION.md](ATTRIBUTION.md) - Complete attribution to FaceFusion
+- [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md) - Ethical use guidelines
+- [REBRANDING_PRD.md](REBRANDING_PRD.md) - Rebranding strategy and execution plan
+- [brand guidelines.md](brand%20guidelines.md) - Visual identity guidelines
+
+## Community
+
+- **Issues**: https://github.com/IlliquidAsset/facefusion/issues
+- **Discussions**: https://github.com/IlliquidAsset/facefusion/discussions
+- **Original FaceFusion**: https://github.com/facefusion/facefusion
+
+## Credits
+
+- **Original FaceFusion**: [Henry Ruhs](https://github.com/henryruhs) and contributors
+- **Training Extensions**: IlliquidAsset
+- **Performance Optimizations**: google-labs-jules (Bolt)
+- **Community Contributors**: See commit history
+
+## Support
+
+If you find WatserFace useful, consider:
+- ⭐ Starring this repository
+- ⭐ Starring the [original FaceFusion repository](https://github.com/facefusion/facefusion)
+- 📢 Sharing with the community
+- 🐛 Reporting issues and contributing fixes
+
+---
+
+**WatserFace v0.10.0** - "Who's that again?"
+
+*Based on FaceFusion by Henry Ruhs | Maintained by IlliquidAsset*
+
+*Licensed under OpenRAIL-AS | Use Responsibly*
