@@ -76,13 +76,15 @@ def predict_next_faces(face_history : List[List[Face]]) -> List[Face]:
 	prev_faces = face_history[-2]
 	predicted_faces = []
 
+	prev_centers = [ numpy.array([ (face.bounding_box[0] + face.bounding_box[2]) / 2, (face.bounding_box[1] + face.bounding_box[3]) / 2 ]) for face in prev_faces ]
+
 	for last_face in last_faces:
 		closest_face = None
 		min_dist = float('inf')
 		last_center = numpy.array([ (last_face.bounding_box[0] + last_face.bounding_box[2]) / 2, (last_face.bounding_box[1] + last_face.bounding_box[3]) / 2 ])
 
-		for prev_face in prev_faces:
-			prev_center = numpy.array([ (prev_face.bounding_box[0] + prev_face.bounding_box[2]) / 2, (prev_face.bounding_box[1] + prev_face.bounding_box[3]) / 2 ])
+		for index, prev_face in enumerate(prev_faces):
+			prev_center = prev_centers[index]
 			dist = numpy.linalg.norm(last_center - prev_center)
 			if dist < min_dist:
 				min_dist = dist
