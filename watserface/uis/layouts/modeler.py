@@ -12,6 +12,7 @@ from watserface.uis.components import about, footer, modeler_source, modeler_tar
 START_MODELER_BUTTON: Optional[gradio.Button] = None
 STOP_MODELER_BUTTON: Optional[gradio.Button] = None
 MODELER_STATUS: Optional[gradio.Textbox] = None
+MODELER_LOSS_PLOT: Optional[gradio.LinePlot] = None
 
 
 def format_training_status(status_data: Any) -> str:
@@ -47,25 +48,26 @@ def wrapped_start_lora_training(
 	lora_rank: int,
 	batch_size: int
 ):
-	"""Wrapper to format LoRA training output with throttling"""
+	"""Wrapper to format LoRA training output with throttling and graphs"""
 	import time
 	import os
 	import shutil
+	import pandas as pd
 	from watserface.training.dataset_extractor import extract_training_dataset
 	from watserface.training.landmark_smoother import apply_smoothing_to_dataset
 	from watserface.training.train_lora import train_lora_model
 
 	# Validation
 	if not source_profile_id:
-		yield "❌ Error: Please select a source identity profile"
+		yield "❌ Error: Please select a source identity profile", None
 		return
 
 	if not target_file:
-		yield "❌ Error: Please upload a target video or image"
+		yield "❌ Error: Please upload a target video or image", None
 		return
 
 	if not model_name:
-		yield "❌ Error: Please enter a model name"
+		yield "❌ Error: Please enter a model name", None
 		return
 
 	# Get target file path
@@ -80,27 +82,28 @@ def wrapped_start_lora_training(
 	existing_frames = len([f for f in os.listdir(dataset_path) if f.endswith('.png')]) if os.path.exists(dataset_path) else 0
 
 	if existing_frames > 0:
-		yield f"📂 Using {existing_frames} existing frames. Skipping extraction..."
+		yield f"📂 Using {existing_frames} existing frames. Skipping extraction...", None
 	else:
 		# Step 1: Extract frames from target
-		yield "📹 Extracting frames from target video..."
+		yield "📹 Extracting frames from target video...", None
 		for stats in extract_training_dataset(
 			source_paths=[target_path],
 			output_dir=dataset_path,
 			frame_interval=2,
 			max_frames=1000
 		):
-			yield f"Extracting... {stats.get('frames_extracted', 0)} frames"
+			yield f"Extracting... {stats.get('frames_extracted', 0)} frames", None
 
 		# Step 2: Apply smoothing
-		yield "🎨 Applying landmark smoothing..."
+		yield "🎨 Applying landmark smoothing...", None
 		apply_smoothing_to_dataset(dataset_path)
 
 	# Step 3: Train LoRA model
-	yield "🚀 Starting LoRA training..."
+	yield "🚀 Starting LoRA training...", None
 
 	last_update = 0
 	last_status = None
+	loss_history = []
 
 	for status_data in train_lora_model(
 		dataset_dir=dataset_path,
@@ -113,17 +116,54 @@ def wrapped_start_lora_training(
 		save_interval=max(10, int(epochs) // 5)
 	):
 		current_time = time.time()
-		formatted_status = format_training_status(status_data)
+
+		# Parse status data
+		message = status_data[0] if isinstance(status_data, (list, tuple)) else str(status_data)
+		telemetry = status_data[1] if isinstance(status_data, (list, tuple)) and len(status_data) > 1 else {}
+
+		# Format status message
+		if telemetry:
+			epoch = telemetry.get('epoch', '?')
+			total_epochs = telemetry.get('total_epochs', '?')
+			loss = telemetry.get('loss', 'N/A')
+			eta = telemetry.get('eta', 'N/A')
+			device = telemetry.get('device', 'N/A')
+			rank = telemetry.get('lora_rank', '?')
+			trainable = telemetry.get('trainable_params', '?')
+
+			formatted_status = f"""📊 LoRA Training Progress
+
+Epoch: {epoch}/{total_epochs}
+Loss: {loss}
+ETA: {eta}
+Device: {device}
+LoRA Rank: {rank}
+Trainable Parameters: {trainable:,}
+
+{message}"""
+
+			# Track loss for graphing
+			if loss != 'N/A':
+				try:
+					loss_history.append({'epoch': int(epoch), 'loss': float(loss)})
+					plot_update = pd.DataFrame(loss_history)
+				except:
+					plot_update = None
+			else:
+				plot_update = None
+		else:
+			formatted_status = message
+			plot_update = None
 
 		# Throttle UI updates to avoid flickering (every 0.5s)
 		if current_time - last_update >= 0.5 or formatted_status != last_status:
 			last_update = current_time
 			last_status = formatted_status
-			yield formatted_status
+			yield formatted_status, plot_update
 
 	# Always yield the final status
 	if last_status:
-		yield last_status
+		yield last_status, pd.DataFrame(loss_history) if loss_history else None
 
 
 def wrapped_stop_training():
@@ -139,7 +179,7 @@ def pre_check() -> bool:
 
 def render() -> gradio.Blocks:
 	"""Render the Modeler tab layout"""
-	global START_MODELER_BUTTON, STOP_MODELER_BUTTON, MODELER_STATUS
+	global START_MODELER_BUTTON, STOP_MODELER_BUTTON, MODELER_STATUS, MODELER_LOSS_PLOT
 
 	with gradio.Blocks() as layout:
 		about.render()
@@ -193,14 +233,27 @@ def render() -> gradio.Blocks:
 				size="lg"
 			)
 
-		# Status Display
-		MODELER_STATUS = gradio.Textbox(
-			label="Training Status",
-			value="Idle - Configure settings and click 'Start LoRA Training'",
-			interactive=False,
-			lines=8,
-			elem_id="modeler_training_status"
-		)
+		# Status Display with Loss Graph
+		with gradio.Row():
+			MODELER_STATUS = gradio.Textbox(
+				label="Training Status",
+				value="Idle - Configure settings and click 'Start LoRA Training'",
+				interactive=False,
+				lines=8,
+				elem_id="modeler_training_status",
+				scale=1
+			)
+
+			MODELER_LOSS_PLOT = gradio.LinePlot(
+				label="Training Loss",
+				x="epoch", y="loss",
+				title="Loss over Time",
+				width=400, height=300,
+				tooltip=["epoch", "loss"],
+				overlay_point=True,
+				elem_classes=["loss-chart-container"],
+				scale=1
+			)
 
 		# Terminal for debugging
 		with gradio.Row():
@@ -230,7 +283,7 @@ def listen() -> None:
 			modeler_options.MODELER_LORA_RANK,
 			modeler_options.MODELER_BATCH_SIZE
 		],
-		outputs=[MODELER_STATUS]
+		outputs=[MODELER_STATUS, MODELER_LOSS_PLOT]
 	)
 
 	STOP_MODELER_BUTTON.click(

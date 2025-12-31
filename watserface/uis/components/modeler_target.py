@@ -27,18 +27,17 @@ def render() -> None:
 	has_target_image = has_image(state_manager.get_item('modeler_target_path'))
 
 	with gradio.Column():
-		gradio.Markdown(
-			"""
-			### 🎯 Target Material
-			Upload the target video or image to train against.
+		gradio.Markdown("### 🎯 Target Material")
 
-			**💡 Tips:**
-			- **Video**: Best for creating LoRA models (more training data)
-			- **Image**: Quick training, but less robust
-			- Target should contain the face/scene you want to learn
-			- Higher quality = better results
-			"""
-		)
+		with gradio.Accordion("💡 Tips", open=False):
+			gradio.Markdown(
+				"""
+				- **Video**: Best for creating LoRA models (more training data)
+				- **Image**: Quick training, but less robust
+				- Target should contain the face/scene you want to learn
+				- Higher quality = better results
+				"""
+			)
 
 		MODELER_TARGET_FILE = gradio.File(
 			label="📁 Drop target video/image here or click to browse",
