@@ -413,15 +413,17 @@ def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 	if trained_model_file_paths:
 		for model_file_path in trained_model_file_paths:
 			model_name = get_file_name(model_file_path)
-			model_set[model_name] = {
-				'hashes': {},
-				'sources': { 'face_swapper': { 'url': '', 'path': model_file_path } },
-				'type': 'inswapper',
-				'template': 'arcface_128',
-				'size': (128, 128),
-				'mean': [ 0.0, 0.0, 0.0 ],
-				'standard_deviation': [ 1.0, 1.0, 1.0 ]
-			}
+			# Only include LoRA models (with _lora suffix), exclude identity models
+			if '_lora' in model_name:
+				model_set[model_name] = {
+					'hashes': {},
+					'sources': { 'face_swapper': { 'url': '', 'path': model_file_path } },
+					'type': 'inswapper',
+					'template': 'arcface_128',
+					'size': (128, 128),
+					'mean': [ 0.0, 0.0, 0.0 ],
+					'standard_deviation': [ 1.0, 1.0, 1.0 ]
+				}
 	return model_set
 
 
@@ -451,9 +453,15 @@ def get_model_options() -> ModelOptions:
 			return {
 				'type': 'inswapper',  # LoRA uses inswapper architecture
 				'size': (128, 128),
-				'path': model_path,
-				'template': 'arcface_128_v2',
-				'hashes': {},
+				'template': 'arcface_128',
+				'mean': [0.0, 0.0, 0.0],
+				'standard_deviation': [1.0, 1.0, 1.0],
+				'hashes': {
+					'face_swapper': {
+						'url': None,
+						'path': resolve_relative_path(f'../.assets/models/trained/{model_name}.hash')
+					}
+				},
 				'sources': {
 					'face_swapper': {
 						'url': None,  # Local model
