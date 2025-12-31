@@ -13,7 +13,7 @@ from typing import Any, List, Optional
 from pathlib import Path
 
 from watserface import identity_profile, logger, state_manager
-from watserface.face_analyser import get_one_face
+from watserface.face_analyser import get_one_face, get_many_faces
 from watserface.face_set import get_face_set_manager, FaceSetConfig
 from watserface.filesystem import is_video, resolve_file_paths, resolve_relative_path
 from watserface.training.dataset_extractor import extract_training_dataset
@@ -272,11 +272,16 @@ def start_identity_training(
 					frames_processed += 1
 					try:
 						frame = read_static_image(frame_path)
-						# get_one_face expects a list of frames
-						face = get_one_face([frame])
-						if face and hasattr(face, 'embedding') and face.embedding is not None:
-							embeddings.append(face.embedding)
-							logger.debug(f"Extracted embedding from {frame_path}", __name__)
+						# First detect faces in the frame
+						faces = get_many_faces([frame])
+						# Then get the first face from the detected faces
+						if faces:
+							face = get_one_face(faces)
+							if face and hasattr(face, 'embedding') and face.embedding is not None:
+								embeddings.append(face.embedding)
+								logger.debug(f"Extracted embedding from {frame_path}", __name__)
+							else:
+								logger.debug(f"Face detected but no embedding in {frame_path}", __name__)
 						else:
 							logger.debug(f"No face detected in {frame_path}", __name__)
 					except Exception as e:
