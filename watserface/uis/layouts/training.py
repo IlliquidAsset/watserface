@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 import os
 import gradio
 import pandas as pd
@@ -86,6 +86,9 @@ def wrapped_start_identity_training(
             'new_face_set_name': face_set_name if save_as_face_set else None
         }
 
+    # Show the telemetry group immediately
+    yield "Initializing...", None, generate_progress_html("Overall Progress", 0, "Starting..."), generate_progress_html("Epoch Progress", 0, "Starting..."), generate_progress_html("Batch Progress", 0, "Starting..."), generate_metrics_html({}), gradio.update(visible=True)
+
     for status_data in training_core.start_identity_training(**training_kwargs):
         current_time = time.time()
         
@@ -112,8 +115,7 @@ def wrapped_start_identity_training(
                 except (ValueError, TypeError):
                     pass
             
-            # Extract progress values (0-100 scale expected by CSS, but telemetry might be 0-1 or 0-100)
-            # Assuming telemetry sends 0-100 strings like "45%" or floats 0.45
+            # Extract progress values
             def parse_pct(val):
                 if isinstance(val, str) and '%' in val:
                     return float(val.strip('%'))
@@ -123,9 +125,8 @@ def wrapped_start_identity_training(
 
             overall_pct = parse_pct(telemetry.get('overall_progress', 0))
             epoch_pct = parse_pct(telemetry.get('epoch_progress', 0))
-            batch_pct = parse_pct(telemetry.get('batch_progress', 0)) # or calculate from batch/total
+            batch_pct = parse_pct(telemetry.get('batch_progress', 0))
             
-            # If batch progress isn't explicit, infer it
             if 'batch' in telemetry and 'total_batches' in telemetry:
                 batch_pct = (int(telemetry['batch']) / int(telemetry['total_batches'])) * 100
 
@@ -138,28 +139,21 @@ def wrapped_start_identity_training(
         # Only update UI every 0.5 seconds to avoid flickering
         if current_time - last_update >= 0.5:
             last_update = current_time
-            yield message, plot_update, overall_html, epoch_html, batch_html, metrics_html
+            yield message, plot_update, overall_html, epoch_html, batch_html, metrics_html, gradio.update(visible=True)
 
     # Always yield the final status
-    yield "Training Complete", pd.DataFrame(loss_history) if loss_history else None, generate_progress_html("Overall", 100, "Done"), generate_progress_html("Epoch", 100, "Done"), generate_progress_html("Batch", 100, "Done"), metrics_html
+    yield "Training Complete", pd.DataFrame(loss_history) if loss_history else None, generate_progress_html("Overall", 100, "Done"), generate_progress_html("Epoch", 100, "Done"), generate_progress_html("Batch", 100, "Done"), metrics_html, gradio.update(visible=True)
 
 
 def wrapped_start_occlusion_training(model_name: str, epochs: int, target_file: Any):
-    # Keep legacy wrapper for occlusion for now, or update similarly if needed.
-    # For now, just basic passthrough to avoid breaking it
     import time
     last_update = 0
-    last_status = None
-
     for status in training_core.start_occlusion_training(model_name, epochs, target_file):
         current_time = time.time()
-        # formatted_status = format_training_status(status) # Removed old formatter
-        formatted_status = str(status) # Simple fallback
-        
+        formatted_status = str(status)
         if current_time - last_update >= 0.5:
             last_update = current_time
             yield formatted_status
-
     yield "Occlusion Training Complete"
 
 
@@ -167,20 +161,19 @@ def wrapped_stop_training():
     return training_core.stop_training()
 
 
-# Identity Training Components
+# Components
 IDENTITY_MODEL_NAME : Optional[gradio.Textbox] = None
 IDENTITY_EPOCHS : Optional[gradio.Slider] = None
 START_IDENTITY_BUTTON : Optional[gradio.Button] = None
 STOP_IDENTITY_BUTTON : Optional[gradio.Button] = None
-IDENTITY_STATUS_TEXT : Optional[gradio.Textbox] = None # Renamed to distinct from HTML
-
-# Progress Components
+IDENTITY_STATUS_TEXT : Optional[gradio.Textbox] = None
+IDENTITY_TELEMETRY_GROUP : Optional[gradio.Group] = None
 IDENTITY_OVERALL_PROGRESS : Optional[gradio.HTML] = None
 IDENTITY_EPOCH_PROGRESS : Optional[gradio.HTML] = None
 IDENTITY_BATCH_PROGRESS : Optional[gradio.HTML] = None
 IDENTITY_METRICS : Optional[gradio.HTML] = None
+LOSS_PLOT : Optional[gradio.LinePlot] = None
 
-# Occlusion Training Components
 OCCLUSION_MODEL_NAME : Optional[gradio.Textbox] = None
 OCCLUSION_EPOCHS : Optional[gradio.Slider] = None
 START_OCCLUSION_BUTTON : Optional[gradio.Button] = None
@@ -192,15 +185,11 @@ def pre_check() -> bool:
     return True
 
 
-# Telemetry Components
-LOSS_PLOT : Optional[gradio.LinePlot] = None
-
-
 def render() -> gradio.Blocks:
     global IDENTITY_MODEL_NAME, IDENTITY_EPOCHS, START_IDENTITY_BUTTON, STOP_IDENTITY_BUTTON, IDENTITY_STATUS_TEXT
     global IDENTITY_OVERALL_PROGRESS, IDENTITY_EPOCH_PROGRESS, IDENTITY_BATCH_PROGRESS, IDENTITY_METRICS
+    global IDENTITY_TELEMETRY_GROUP, LOSS_PLOT
     global OCCLUSION_MODEL_NAME, OCCLUSION_EPOCHS, START_OCCLUSION_BUTTON, STOP_OCCLUSION_BUTTON, OCCLUSION_STATUS
-    global LOSS_PLOT
 
     with gradio.Blocks() as layout:
         about.render()
@@ -211,53 +200,45 @@ def render() -> gradio.Blocks:
                 gradio.Markdown("### 👤 Train Identity Model")
                 
                 with gradio.Row():
-                    # Left Column: Config & Controls
-                    with gradio.Column(scale=1):
+                    # Config Column
+                    with gradio.Column():
                         training_source.render()
                         IDENTITY_MODEL_NAME = gradio.Textbox(label="Identity Model Name", placeholder="e.g. my_actor_v1")
                         IDENTITY_EPOCHS = gradio.Slider(label="Epochs", minimum=1, maximum=1000, value=100, step=1)
                         
                         with gradio.Row():
-                            START_IDENTITY_BUTTON = gradio.Button(
-                                "▶ Start Training",
-                                variant="primary",
-                                elem_classes=["primary-btn"]
-                            )
-                            STOP_IDENTITY_BUTTON = gradio.Button(
-                                "⏹ Stop",
-                                variant="stop",
-                                elem_classes=["stop-btn"]
-                            )
+                            START_IDENTITY_BUTTON = gradio.Button("▶ Start Training", variant="primary", elem_classes=["primary-btn"])
+                            STOP_IDENTITY_BUTTON = gradio.Button("⏹ Stop", variant="stop", elem_classes=["stop-btn"])
                         
-                        IDENTITY_STATUS_TEXT = gradio.Textbox(label="Status Message", value="Idle", interactive=False, lines=2)
+                        IDENTITY_STATUS_TEXT = gradio.Textbox(label="Current Status", value="Idle", interactive=False, lines=2)
 
-                    # Middle Column: Progress Bars
-                    with gradio.Column(scale=1):
-                        gradio.Markdown("### 📊 Progress")
-                        IDENTITY_OVERALL_PROGRESS = gradio.HTML(value=generate_progress_html("Overall Progress", 0, "Idle"))
-                        IDENTITY_EPOCH_PROGRESS = gradio.HTML(value=generate_progress_html("Epoch Progress", 0, "Idle"))
-                        IDENTITY_BATCH_PROGRESS = gradio.HTML(value=generate_progress_html("Batch Progress", 0, "Idle"))
+                # NEW: Telemetry and Progress (Divided into columns, hidden initially)
+                with gradio.Group(visible=False) as IDENTITY_TELEMETRY_GROUP:
+                    gradio.Markdown("### 📊 Live Telemetry & Progress")
+                    with gradio.Row():
+                        # Column 1: Progress Bars
+                        with gradio.Column(scale=1):
+                            IDENTITY_OVERALL_PROGRESS = gradio.HTML(value=generate_progress_html("Overall Progress", 0, "Idle"))
+                            IDENTITY_EPOCH_PROGRESS = gradio.HTML(value=generate_progress_html("Epoch Progress", 0, "Idle"))
+                            IDENTITY_BATCH_PROGRESS = gradio.HTML(value=generate_progress_html("Batch Progress", 0, "Idle"))
 
-                    # Right Column: Charts & Metrics
-                    with gradio.Column(scale=1):
-                        gradio.Markdown("### 📈 Telemetry")
-                        LOSS_PLOT = gradio.LinePlot(
-                            label="Training Loss",
-                            x="epoch",
-                            y="loss",
-                            title="Loss over Time",
-                            width=400,
-                            height=200,
-                            tooltip=["epoch", "loss"],
-                            overlay_point=True,
-                            elem_classes=["loss-chart-container"]
-                        )
-                        IDENTITY_METRICS = gradio.HTML(value=generate_metrics_html({}))
+                        # Column 2: Charts & Metrics
+                        with gradio.Column(scale=1):
+                            LOSS_PLOT = gradio.LinePlot(
+                                label="Training Loss",
+                                x="epoch", y="loss",
+                                title="Loss over Time",
+                                width=400, height=200,
+                                tooltip=["epoch", "loss"],
+                                overlay_point=True,
+                                elem_classes=["loss-chart-container"]
+                            )
+                            IDENTITY_METRICS = gradio.HTML(value=generate_metrics_html({}))
 
-            # === Occlusion Training Tab (Simplified for now) ===
+            # === Occlusion Training Tab ===
             with gradio.Tab("Occlusion Training"):
                 with gradio.Row():
-                    with gradio.Column(scale=1):
+                    with gradio.Column():
                         gradio.Markdown("### 🎭 Train Occlusion Model")
                         training_target.render()
                         OCCLUSION_MODEL_NAME = gradio.Textbox(label="Occlusion Model Name", placeholder="e.g. corndog_scene_mask")
@@ -298,7 +279,8 @@ def listen() -> None:
             IDENTITY_OVERALL_PROGRESS, 
             IDENTITY_EPOCH_PROGRESS, 
             IDENTITY_BATCH_PROGRESS, 
-            IDENTITY_METRICS
+            IDENTITY_METRICS,
+            IDENTITY_TELEMETRY_GROUP
         ]
     )
     STOP_IDENTITY_BUTTON.click(wrapped_stop_training, outputs=[IDENTITY_STATUS_TEXT])
