@@ -194,6 +194,7 @@ def start_identity_training(
 		telemetry['status'] = 'Training'
 		onnx_path = ""
 
+		training_was_stopped = False
 		try:
 			for status_msg, train_stats in train_instantid_model(
 				dataset_dir=dataset_path,
@@ -204,8 +205,10 @@ def start_identity_training(
 				save_interval=max(10, epochs // 5)
 			):
 				if _training_stopped:
-					yield ["Training Stopped.", telemetry]
-					return
+					training_was_stopped = True
+					telemetry['status'] = 'Stopped'
+					yield ["⚠️ Training stopped by user.", telemetry]
+					break  # Break instead of return - allows profile creation to run
 
 				if 'model_path' in train_stats:
 					onnx_path = train_stats['model_path']
@@ -220,7 +223,7 @@ def start_identity_training(
 			telemetry['status'] = 'Failed'
 			telemetry['error'] = str(e)
 			yield [error_msg, telemetry]
-			return
+			# Don't return - allow profile creation to attempt
 
 		# Copy ONNX model to assets (if training completed)
 		final_model_path = None
@@ -352,7 +355,13 @@ def start_identity_training(
 			logger.info(f"Recorded training use for Face Set {face_set_id}", __name__)
 
 		# Final status message
-		telemetry['status'] = 'Complete' if onnx_path else 'Incomplete (Stopped)'
+		if training_was_stopped:
+			telemetry['status'] = 'Stopped'
+		elif onnx_path:
+			telemetry['status'] = 'Complete'
+		else:
+			telemetry['status'] = 'Incomplete'
+
 		if final_model_path:
 			telemetry['model_path'] = final_model_path
 
@@ -361,17 +370,17 @@ def start_identity_training(
 				if onnx_path:
 					final_message = f"✅ Identity Model '{model_name}' trained successfully! Profile enriched: +{telemetry['embedding_count']} new embeddings (total: {telemetry['total_embeddings']}, session #{telemetry['training_sessions']})"
 				else:
-					final_message = f"⚠️ Training stopped early. Profile enriched: +{telemetry['embedding_count']} new embeddings (total: {telemetry['total_embeddings']}, session #{telemetry['training_sessions']}). Resume training to complete."
+					final_message = f"⚠️ Training stopped early. Profile enriched: +{telemetry['embedding_count']} new embeddings (total: {telemetry['total_embeddings']}, session #{telemetry['training_sessions']}). Now available in Modeler!"
 			else:
 				if onnx_path:
 					final_message = f"✅ Identity Model '{model_name}' trained successfully! Profile created with {telemetry['embedding_count']} embeddings."
 				else:
-					final_message = f"⚠️ Training stopped early. Profile created with {telemetry['embedding_count']} embeddings. Resume training to export ONNX model."
+					final_message = f"⚠️ Training stopped early. Profile created with {telemetry['embedding_count']} embeddings. Now available in Modeler!"
 		else:
 			if onnx_path:
 				final_message = f"⚠️ Identity Model '{model_name}' trained, but profile creation failed. {telemetry.get('error', 'Unknown error')}"
 			else:
-				final_message = f"⚠️ Training stopped early and profile creation failed. {telemetry.get('error', 'Unknown error')}"
+				final_message = f"⚠️ Training stopped early. Profile creation failed: {telemetry.get('error', 'Unknown error')}"
 
 		yield [final_message, telemetry]
 
