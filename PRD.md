@@ -23,12 +23,12 @@
 ### 2.1 Problem Statement
 1.  **Progress Bar Conflicts:** Text-based telemetry fights with visual progress bars.
 2.  **Visuals:** UI lacks the intended "high-tech/speed-test" vibe; missing glassmorphism.
-3.  **Performance:** M4 Max hardware (Neural Engine, 48GB+ RAM) is underutilized.
+3.  **Performance:** M4 Apple Silicon (4 Performance Cores, 16GB RAM) needs balanced optimization for fanless thermal management.
 
 ### 2.2 Success Criteria
 -   [ ] **Training Status UI:** Split into 2 columns (Progress Bars left, Real-time Charts right).
 -   [ ] **Visuals:** Dark glassmorphism (`backdrop-filter: blur`), animated CSS progress bars.
--   [ ] **Performance:** Default to 12 threads + CoreML/MPS on M4 Macs. Target: 10-15 min/epoch.
+-   [ ] **Performance:** Default to 4-6 threads + CoreML/MPS. Memory limit capped at 10GB to ensure system stability.
 -   [ ] **Telemetry:** Real-time loss graphs using `gradio.LinePlot`.
 
 ### 2.3 Technical Specifications
