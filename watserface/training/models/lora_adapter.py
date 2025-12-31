@@ -160,6 +160,9 @@ class LoRAWrapper:
 				if isinstance(module, (nn.Linear, nn.Conv2d)):
 					target_modules.append(name)
 
+		# Get device of the model
+		device = next(model.parameters()).device
+
 		# Replace target modules with LoRA-wrapped versions
 		for target_name in target_modules:
 			# Navigate to parent module
@@ -169,8 +172,9 @@ class LoRAWrapper:
 			# Get original layer
 			original_layer = getattr(parent, child_name)
 
-			# Wrap with LoRA
+			# Wrap with LoRA and move to same device
 			lora_layer = LoRALayer(original_layer, rank=rank, alpha=alpha, dropout=dropout)
+			lora_layer = lora_layer.to(device)
 
 			# Replace
 			setattr(parent, child_name, lora_layer)
