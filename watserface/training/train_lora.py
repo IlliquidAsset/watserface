@@ -29,7 +29,7 @@ def train_lora_model(
 	learning_rate: float,
 	lora_rank: int,
 	save_interval: int,
-	progress: Any,
+	progress: Any = None,
 	max_frames: int = 1000
 ) -> Iterator[Tuple[str, Dict]]:
 	"""

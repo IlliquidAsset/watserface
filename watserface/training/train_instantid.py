@@ -174,6 +174,10 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			'historical_loss': loss_history
 		}
 
+	# Initialize variables used in exception/finally blocks
+	avg_loss = 0.0
+	epoch = start_epoch
+
 	try:
 		for epoch in range(start_epoch, epochs):
 			epoch_loss = 0
