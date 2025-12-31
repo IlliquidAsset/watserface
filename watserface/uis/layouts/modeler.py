@@ -5,7 +5,7 @@ from typing import Optional, Any
 import gradio
 
 from watserface import state_manager, logger
-from watserface.uis.components import about, footer, modeler_source, modeler_target, modeler_options, terminal
+from watserface.uis.components import about, footer, modeler_source, modeler_target, modeler_options, terminal, lora_loader
 
 
 # Training Controls
@@ -40,6 +40,8 @@ def format_training_status(status_data: Any) -> str:
 
 
 def wrapped_start_lora_training(
+	lora_mode: str,
+	existing_lora_name: Optional[str],
 	source_profile_id: str,
 	target_file: Any,
 	model_name: str,
@@ -57,12 +59,19 @@ def wrapped_start_lora_training(
 	from watserface.training.landmark_smoother import apply_smoothing_to_dataset
 	from watserface.training.train_lora import train_lora_model
 
+	# Handle "Continue Training" mode
+	if lora_mode == "Continue Training":
+		if not existing_lora_name:
+			yield "❌ Error: Please select an existing LoRA model to continue training", None
+			return
+		model_name = existing_lora_name  # Use existing LoRA name
+
 	# Validation
 	if not source_profile_id:
 		yield "❌ Error: Please select a source identity profile", None
 		return
 
-	if not target_file:
+	if not target_file and lora_mode == "New LoRA":
 		yield "❌ Error: Please upload a target video or image", None
 		return
 
@@ -216,6 +225,9 @@ def render() -> gradio.Blocks:
 				with gradio.Accordion("🎯 Target Material", open=True):
 					modeler_target.render()
 
+		# Load Existing LoRA Option
+		lora_loader.render()
+
 		# Training Configuration
 		with gradio.Accordion("⚙️ Training Configuration", open=True):
 			modeler_options.render()
@@ -266,6 +278,7 @@ def render() -> gradio.Blocks:
 
 def listen() -> None:
 	"""Set up event listeners"""
+	lora_loader.listen()
 	modeler_source.listen()
 	modeler_target.listen()
 	modeler_options.listen()
@@ -275,6 +288,8 @@ def listen() -> None:
 	START_MODELER_BUTTON.click(
 		wrapped_start_lora_training,
 		inputs=[
+			lora_loader.LORA_MODE_RADIO,
+			lora_loader.EXISTING_LORA_DROPDOWN,
 			modeler_source.MODELER_SOURCE_PROFILE_DROPDOWN,
 			modeler_target.MODELER_TARGET_FILE,
 			modeler_options.MODELER_MODEL_NAME,

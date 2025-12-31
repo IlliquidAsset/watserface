@@ -5,7 +5,7 @@ import pandas as pd
 
 from watserface import state_manager
 from watserface.filesystem import resolve_relative_path
-from watserface.uis.components import about, footer, training_source, training_target, terminal
+from watserface.uis.components import about, footer, training_source, training_target, terminal, identity_loader
 from watserface.training import core as training_core
 
 
@@ -57,7 +57,9 @@ def generate_metrics_html(telemetry: dict) -> str:
 def wrapped_start_identity_training(
     model_name: str,
     epochs: int,
-    source_type: str,
+    identity_mode: str,
+    existing_identity_id: Optional[str] = None,
+    source_type: str = "Upload Files",
     face_set_id: Optional[str] = None,
     source_files: Any = None,
     save_as_face_set: bool = False,
@@ -70,6 +72,13 @@ def wrapped_start_identity_training(
     last_status = None
     loss_history = []
     historical_loaded = False
+
+    # Handle "Load Existing" mode - use existing identity ID as model name
+    if identity_mode == "Load Existing":
+        if not existing_identity_id:
+            yield "❌ Error: Please select an existing identity to enrich", None, generate_progress_html("Overall Progress", 0, "Error"), generate_progress_html("Epoch Progress", 0, "Error"), generate_progress_html("Batch Progress", 0, "Error"), generate_metrics_html({}), gradio.update(visible=True)
+            return
+        model_name = existing_identity_id  # Use existing identity ID
 
     # Determine parameters based on source type
     if source_type == "Face Set":
@@ -223,6 +232,7 @@ def render() -> gradio.Blocks:
                 with gradio.Row():
                     # Config Column
                     with gradio.Column():
+                        identity_loader.render()
                         training_source.render()
                         IDENTITY_MODEL_NAME = gradio.Textbox(label="Identity Model Name", placeholder="e.g. my_actor_v1")
                         IDENTITY_EPOCHS = gradio.Slider(label="Epochs", minimum=1, maximum=1000, value=100, step=1)
@@ -278,6 +288,7 @@ def render() -> gradio.Blocks:
 
 
 def listen() -> None:
+    identity_loader.listen()
     training_source.listen()
     training_target.listen()
     terminal.listen()
@@ -287,6 +298,8 @@ def listen() -> None:
         inputs=[
             IDENTITY_MODEL_NAME,
             IDENTITY_EPOCHS,
+            identity_loader.IDENTITY_MODE_RADIO,
+            identity_loader.EXISTING_IDENTITY_DROPDOWN,
             training_source.SOURCE_TYPE_RADIO,
             training_source.FACE_SET_DROPDOWN,
             training_source.TRAINING_SOURCE_FILE,
