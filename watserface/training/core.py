@@ -197,8 +197,7 @@ def start_identity_training(
 				epochs=epochs,
 				batch_size=4,
 				learning_rate=0.0001,
-				save_interval=max(10, epochs // 5),
-				progress=progress
+				save_interval=max(10, epochs // 5)
 			):
 				if _training_stopped:
 					yield ["Training Stopped.", telemetry]

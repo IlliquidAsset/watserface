@@ -1,3 +1,4 @@
+import platform
 import shutil
 import subprocess
 import xml.etree.ElementTree as ElementTree
@@ -103,6 +104,25 @@ def detect_static_execution_devices() -> List[ExecutionDevice]:
 
 def detect_execution_devices() -> List[ExecutionDevice]:
 	execution_devices : List[ExecutionDevice] = []
+
+	if platform.system() == 'Darwin' and platform.machine() == 'arm64':
+		execution_devices.append(
+		{
+			'driver_version': None,
+			'framework':
+			{
+				'name': 'CoreML',
+				'version': None
+			},
+			'product':
+			{
+				'vendor': 'Apple',
+				'name': platform.processor() or 'Apple Silicon'
+			},
+			'video_memory': None,
+			'temperature': None,
+			'utilization': None
+		})
 
 	try:
 		output, _ = run_nvidia_smi().communicate()

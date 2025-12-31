@@ -3,6 +3,23 @@
 	overflow: unset;
 }
 
+/* Glassmorphism Variables & Global Styles */
+.dark {
+    --glass-bg: rgba(13, 13, 13, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --neon-magenta: #FF00FF;
+    --neon-blurple: #4D4DFF;
+    --neon-lime: #CCFF00;
+}
+
+.glass {
+    background: var(--glass-bg, rgba(255, 255, 255, 0.7));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.1));
+    border-radius: 8px;
+}
+
 :root:root:root:root main
 {
 	max-width: 110em;

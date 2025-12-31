@@ -8,7 +8,20 @@ else:
 
 def limit_system_memory(system_memory_limit : int = 1) -> bool:
 	if is_macos():
-		system_memory_limit = system_memory_limit * (1024 ** 6)
+		import platform
+		# Auto-cap at 10GB for Apple Silicon if not specified or if potentially too high?
+		# PRD says: "Memory limit capped at 10GB for Apple Silicon"
+		# The input `system_memory_limit` is likely in GB from settings.
+		if platform.machine() == 'arm64':
+			# Cap at 10GB for Apple Silicon
+			if system_memory_limit > 10:
+				system_memory_limit = 10
+
+		# Fix: 1024 ** 6 was likely incorrect (Exabytes).
+		# If input is in GB, converting to bytes is * 1024 ** 3.
+		# If the original code intended something else, it is likely a bug.
+		# Correcting to GB -> Bytes conversion.
+		system_memory_limit = system_memory_limit * (1024 ** 3)
 	else:
 		system_memory_limit = system_memory_limit * (1024 ** 3)
 	try:

@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 import cv2
-from typing import Any, Iterator, Tuple, Dict
+from typing import Iterator, Tuple, Dict
 import time
 
 from watserface import logger
@@ -91,7 +91,7 @@ class FaceDataset(Dataset):
 		return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
 
 
-def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, progress: Any, max_frames: int = 1000) -> Iterator[Tuple[str, Dict]]:
+def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, max_frames: int = 1000) -> Iterator[Tuple[str, Dict]]:
 	logger.info(f"Initializing Identity Training (SimSwap Fine-tune) for {model_name}...", __name__)
 
 	device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
@@ -130,11 +130,11 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			else:
 				# Old format - just model state dict
 				model.load_state_dict(checkpoint)
-				logger.info(f"✅ Loaded model weights (epoch info not available)", __name__)
+				logger.info("✅ Loaded model weights (epoch info not available)", __name__)
 		except Exception as e:
 			logger.warn(f"Could not load checkpoint: {e}. Starting fresh.", __name__)
 	else:
-		logger.info(f"🆕 Starting fresh training (no checkpoint found)", __name__)
+		logger.info("🆕 Starting fresh training (no checkpoint found)", __name__)
 
 	model.train()
 	start_time = time.time()
@@ -161,8 +161,6 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 					# Calculate overall progress (across all epochs)
 					overall_progress = ((epoch * total_batches) + (batch_idx + 1)) / (epochs * total_batches)
 
-					# Update Gradio progress bar (visual progress bar at top of UI)
-					progress(overall_progress, desc=f"Epoch {epoch + 1}/{epochs} - Batch {batch_idx + 1}/{total_batches}")
 					batch_progress = (batch_idx + 1) / total_batches * 100
 					current_loss = epoch_loss / (batch_idx + 1)
 
@@ -173,7 +171,7 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 						'epoch_progress': f"{batch_progress:.0f}%",
 						'batch': batch_idx + 1,
 						'total_batches': total_batches,
-						'current_loss': f"{current_loss:.4f}",
+						'current_loss': float(f"{current_loss:.4f}"),
 						'device': str(device)
 					}
 					yield f"Epoch {epoch + 1}/{epochs} - Batch {batch_idx + 1}/{total_batches} ({batch_progress:.0f}%) | Loss: {current_loss:.4f}", batch_telemetry
@@ -194,7 +192,7 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			telemetry = {
 				'epoch': epoch + 1,
 				'total_epochs': epochs,
-				'loss': f"{avg_loss:.4f}",
+				'loss': float(f"{avg_loss:.4f}"),
 				'epoch_time': f"{int(epoch_time)}s",
 				'eta': f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s",
 				'overall_progress': f"{overall_progress:.1f}%",
@@ -240,7 +238,7 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			'loss': avg_loss,
 		}
 		torch.save(checkpoint_state, checkpoint_path)
-		logger.info(f"💾 Final checkpoint saved", __name__)
+		logger.info("💾 Final checkpoint saved", __name__)
 		
 		# Final Report Calculation
 		total_time = time.time() - start_time
