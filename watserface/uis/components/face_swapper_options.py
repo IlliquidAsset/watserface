@@ -126,6 +126,42 @@ def update_face_swapper_model(face_swapper_model : FaceSwapperModel) -> Tuple[gr
 	face_swapper_module.clear_inference_pool()
 	state_manager.set_item('face_swapper_model', face_swapper_model)
 
+	# Auto-load correct source identity for LoRA models
+	if face_swapper_model and '_lora' in face_swapper_model:
+		import torch
+		from watserface.filesystem import resolve_relative_path
+
+		# Load LoRA checkpoint to get source profile ID
+		lora_checkpoint_path = resolve_relative_path(f'../.jobs/training_dataset_lora/{face_swapper_model}.pth')
+		if not os.path.exists(lora_checkpoint_path):
+			lora_checkpoint_path = resolve_relative_path(f'../.assets/models/trained/{face_swapper_model}.pth')
+
+		if os.path.exists(lora_checkpoint_path):
+			try:
+				checkpoint = torch.load(lora_checkpoint_path, map_location='cpu')
+				source_profile_id = checkpoint.get('source_profile_id')
+
+				if source_profile_id:
+					# Load the identity profile that this LoRA expects
+					from watserface.identity_profile import SourceIntelligence
+					profile_path = resolve_relative_path(f'../models/identities/{source_profile_id}')
+
+					if os.path.exists(profile_path):
+						source_intel = SourceIntelligence()
+						# FIX: Changed load_identity_profile to load_profile
+						profile = source_intel.load_profile(source_profile_id)
+
+						if profile:
+							# Auto-load this identity as the source
+							logger.info(f'LoRA model {face_swapper_model} requires source identity: {profile.name}', __name__)
+							logger.info(f'Auto-loading {profile.name} as source...', __name__)
+
+							# Update state to use this identity
+							state_manager.set_item('use_identity_profile', True)
+							state_manager.set_item('selected_identity_profile', source_profile_id)
+			except Exception as error:
+				logger.error(f'Failed to auto-load source identity for LoRA: {error}', __name__)
+
 	# Silence logger during UI update to avoid "model not found" errors during initialization
 	logger.disable()
 	pre_check_result = face_swapper_module.pre_check()

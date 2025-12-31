@@ -52,6 +52,14 @@ def train_lora_model(
 	"""
 	logger.info(f"Initializing LoRA Training for '{model_name}'...", __name__)
 
+	# Normalize model name to ensure consistent _lora suffix
+	if not model_name.endswith('_lora'):
+		full_model_name = f"{model_name}_lora"
+	else:
+		full_model_name = model_name
+	
+	logger.info(f"Full model name: {full_model_name}", __name__)
+
 	# Device detection
 	device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
 	logger.info(f"Using device: {device}", __name__)
@@ -108,14 +116,14 @@ def train_lora_model(
 	# Loss function
 	criterion = nn.L1Loss()  # Reconstruction loss
 
-	# Checkpoint management
-	checkpoint_path = os.path.join(dataset_dir, f"{model_name}_lora.pth")
+	# Checkpoint management using the normalized name
+	checkpoint_path = os.path.join(dataset_dir, f"{full_model_name}.pth")
 	start_epoch = 0
 
 	# Check for existing checkpoint in assets
 	if not os.path.exists(checkpoint_path):
 		assets_checkpoint = os.path.abspath(
-			os.path.join(os.path.dirname(__file__), '../../.assets/models/trained', f"{model_name}_lora.pth")
+			os.path.join(os.path.dirname(__file__), '../../.assets/models/trained', f"{full_model_name}.pth")
 		)
 		if os.path.exists(assets_checkpoint):
 			logger.info(f"📂 Restoring checkpoint from assets: {assets_checkpoint}", __name__)
@@ -272,7 +280,7 @@ def train_lora_model(
 		try:
 			from watserface.filesystem import resolve_relative_path
 
-			output_path = os.path.join(dataset_dir, f"{model_name}_lora.onnx")
+			output_path = os.path.join(dataset_dir, f"{full_model_name}.onnx")
 			model.eval()
 
 			dummy_target = torch.randn(1, 3, 128, 128).to(device)
@@ -304,11 +312,11 @@ def train_lora_model(
 			if not os.path.exists(trained_models_dir):
 				os.makedirs(trained_models_dir, exist_ok=True)
 
-			final_model_path = os.path.join(trained_models_dir, f"{model_name}_lora.onnx")
+			final_model_path = os.path.join(trained_models_dir, f"{full_model_name}.onnx")
 			shutil.copy(output_path, final_model_path)
 
 			# Also copy the checkpoint
-			checkpoint_dst = os.path.join(trained_models_dir, f"{model_name}_lora.pth")
+			checkpoint_dst = os.path.join(trained_models_dir, f"{full_model_name}.pth")
 			if os.path.exists(checkpoint_path):
 				shutil.copy(checkpoint_path, checkpoint_dst)
 
