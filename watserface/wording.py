@@ -118,6 +118,7 @@ WORDING : Dict[str, Any] =\
 		# face selector
 		'face_selector_mode': 'use reference based tracking or simple matching',
 		'face_selector_order': 'specify the order of the detected faces',
+		'face_selector_age_range': 'filter the detected faces based on the age range',
 		'face_selector_age_start': 'filter the detected faces based the starting age',
 		'face_selector_age_end': 'filter the detected faces based the ending age',
 		'face_selector_gender': 'filter the detected faces based on their gender',
