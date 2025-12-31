@@ -13,6 +13,8 @@ START_MODELER_BUTTON: Optional[gradio.Button] = None
 STOP_MODELER_BUTTON: Optional[gradio.Button] = None
 MODELER_STATUS: Optional[gradio.Textbox] = None
 MODELER_LOSS_PLOT: Optional[gradio.LinePlot] = None
+MODELER_OVERALL_PROGRESS: Optional[gradio.Textbox] = None
+MODELER_EPOCH_PROGRESS: Optional[gradio.Textbox] = None
 
 
 def format_training_status(status_data: Any) -> str:
@@ -108,24 +110,24 @@ def wrapped_start_lora_training(
 	existing_frames = len([f for f in os.listdir(dataset_path) if f.endswith('.png')]) if os.path.exists(dataset_path) else 0
 
 	if existing_frames > 0:
-		yield f"📂 Using {existing_frames} existing frames. Skipping extraction...", None
+		yield f"📂 Using {existing_frames} existing frames. Skipping extraction...", None, "Preparing...", "Preparing..."
 	else:
 		# Step 1: Extract frames from target
-		yield "📹 Extracting frames from target video...", None
+		yield "📹 Extracting frames from target video...", None, "Extracting...", "Extracting..."
 		for stats in extract_training_dataset(
 			source_paths=[target_path],
 			output_dir=dataset_path,
 			frame_interval=2,
 			max_frames=1000
 		):
-			yield f"Extracting... {stats.get('frames_extracted', 0)} frames", None
+			yield f"Extracting... {stats.get('frames_extracted', 0)} frames", None, "Extracting...", "Extracting..."
 
 		# Step 2: Apply smoothing
-		yield "🎨 Applying landmark smoothing...", None
+		yield "🎨 Applying landmark smoothing...", None, "Smoothing...", "Smoothing..."
 		apply_smoothing_to_dataset(dataset_path)
 
 	# Step 3: Train LoRA model
-	yield "🚀 Starting LoRA training...", None
+	yield "🚀 Starting LoRA training...", None, "Starting...", "Starting..."
 
 	last_update = 0
 	last_status = None
@@ -156,6 +158,21 @@ def wrapped_start_lora_training(
 			device = telemetry.get('device', 'N/A')
 			rank = telemetry.get('lora_rank', '?')
 			trainable = telemetry.get('trainable_params', '?')
+			frames_used = telemetry.get('frames_used', 0)
+			batch_size_actual = telemetry.get('batch_size', batch_size)
+
+			# Calculate progress
+			try:
+				epoch_num = int(epoch)
+				total_epochs_num = int(total_epochs)
+				overall_pct = (epoch_num / total_epochs_num * 100) if total_epochs_num > 0 else 0
+				overall_progress_str = f"{epoch_num}/{total_epochs_num} epochs ({overall_pct:.1f}%)"
+			except:
+				overall_progress_str = f"{epoch}/{total_epochs} epochs"
+
+			# Epoch progress (batches)
+			batches_per_epoch = (frames_used // batch_size_actual) if batch_size_actual > 0 else 0
+			epoch_progress_str = f"Batch progress tracked per epoch ({batches_per_epoch} batches/epoch)"
 
 			formatted_status = f"""📊 LoRA Training Progress
 
@@ -180,16 +197,18 @@ Trainable Parameters: {trainable:,}
 		else:
 			formatted_status = message
 			plot_update = None
+			overall_progress_str = "Initializing..."
+			epoch_progress_str = "Waiting..."
 
 		# Throttle UI updates to avoid flickering (every 0.5s)
 		if current_time - last_update >= 0.5 or formatted_status != last_status:
 			last_update = current_time
 			last_status = formatted_status
-			yield formatted_status, plot_update
+			yield formatted_status, plot_update, overall_progress_str, epoch_progress_str
 
 	# Always yield the final status
 	if last_status:
-		yield last_status, pd.DataFrame(loss_history) if loss_history else None
+		yield last_status, pd.DataFrame(loss_history) if loss_history else None, "Complete!", "Complete!"
 
 
 def wrapped_stop_training():
@@ -205,31 +224,36 @@ def pre_check() -> bool:
 
 def render() -> gradio.Blocks:
 	"""Render the Modeler tab layout"""
-	global START_MODELER_BUTTON, STOP_MODELER_BUTTON, MODELER_STATUS, MODELER_LOSS_PLOT
+	global START_MODELER_BUTTON, STOP_MODELER_BUTTON, MODELER_STATUS, MODELER_LOSS_PLOT, MODELER_OVERALL_PROGRESS, MODELER_EPOCH_PROGRESS
 
 	with gradio.Blocks() as layout:
 		about.render()
 
 		gradio.Markdown("## 🎯 Step 3: LoRA Paired Training (Modeler)")
-		gradio.Markdown(
-			"""
-			Train a custom LoRA model that maps a **source identity** to a **target scene/person**.
-			This creates a specialized model for highly accurate face swapping in specific contexts.
 
-			**How it works:**
-			1. Select a trained identity profile (from Training tab)
-			2. Upload target video/image to train against
-			3. Configure LoRA training parameters
-			4. Start training to create a custom model
-			5. Use the trained model in the Swap tab for superior results
+		with gradio.Accordion("ℹ️ How it works", open=False):
+			gradio.Markdown(
+				"""
+				Train a custom LoRA model that maps a **source identity** to a **target scene/person**.
+				This creates a specialized model for highly accurate face swapping in specific contexts.
 
-			**Benefits:**
-			- 🎯 Superior accuracy for specific source→target pairs
-			- 🚀 Smaller model size (LoRA adapters)
-			- 💾 Faster inference than full models
-			- 🔄 Can combine multiple LoRA models
-			"""
-		)
+				**How it works:**
+				1. Select a trained identity profile (from Training tab)
+				2. Upload target video/image to train against
+				3. Configure LoRA training parameters
+				4. Start training to create a custom model
+				5. Use the trained model in the Swap tab for superior results
+
+				**Benefits:**
+				- 🎯 Superior accuracy for specific source→target pairs
+				- 🚀 Smaller model size (LoRA adapters)
+				- 💾 Faster inference than full models
+				- 🔄 Can combine multiple LoRA models
+				"""
+			)
+
+		# Load Existing LoRA Option (at top)
+		lora_loader.render()
 
 		with gradio.Row():
 			# Left Column: Source Identity
@@ -241,9 +265,6 @@ def render() -> gradio.Blocks:
 			with gradio.Column(scale=1):
 				with gradio.Accordion("🎯 Target Material", open=True):
 					modeler_target.render()
-
-		# Load Existing LoRA Option
-		lora_loader.render()
 
 		# Training Configuration
 		with gradio.Accordion("⚙️ Training Configuration", open=True):
@@ -262,16 +283,23 @@ def render() -> gradio.Blocks:
 				size="lg"
 			)
 
-		# Status Display with Loss Graph
+		# Progress Bars
 		with gradio.Row():
-			MODELER_STATUS = gradio.Textbox(
-				label="Training Status",
-				value="Idle - Configure settings and click 'Start LoRA Training'",
-				interactive=False,
-				lines=8,
-				elem_id="modeler_training_status",
-				scale=1
-			)
+			with gradio.Column(scale=1):
+				MODELER_OVERALL_PROGRESS = gradio.Textbox(
+					label="⏱️ Overall Progress",
+					value="0/0 epochs (0%)",
+					interactive=False,
+					lines=1,
+					elem_id="modeler_overall_progress"
+				)
+				MODELER_EPOCH_PROGRESS = gradio.Textbox(
+					label="📊 Current Epoch Progress",
+					value="0/0 batches",
+					interactive=False,
+					lines=1,
+					elem_id="modeler_epoch_progress"
+				)
 
 			MODELER_LOSS_PLOT = gradio.LinePlot(
 				label="Training Loss",
@@ -283,6 +311,15 @@ def render() -> gradio.Blocks:
 				elem_classes=["loss-chart-container"],
 				scale=1
 			)
+
+		# Status Display
+		MODELER_STATUS = gradio.Textbox(
+			label="Training Status",
+			value="Idle - Configure settings and click 'Start LoRA Training'",
+			interactive=False,
+			lines=6,
+			elem_id="modeler_training_status"
+		)
 
 		# Terminal for debugging
 		with gradio.Row():
@@ -315,7 +352,7 @@ def listen() -> None:
 			modeler_options.MODELER_LORA_RANK,
 			modeler_options.MODELER_BATCH_SIZE
 		],
-		outputs=[MODELER_STATUS, MODELER_LOSS_PLOT]
+		outputs=[MODELER_STATUS, MODELER_LOSS_PLOT, MODELER_OVERALL_PROGRESS, MODELER_EPOCH_PROGRESS]
 	)
 
 	STOP_MODELER_BUTTON.click(

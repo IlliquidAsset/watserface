@@ -20,17 +20,6 @@ def render() -> None:
 	global MODELER_SOURCE_PROFILE_DROPDOWN, MODELER_SOURCE_REFRESH_BUTTON, MODELER_SOURCE_STATUS, MODELER_SOURCE_INFO
 
 	with gradio.Column():
-		gradio.Markdown("### 👤 Source Identity Profile")
-
-		with gradio.Accordion("💡 Tips", open=False):
-			gradio.Markdown(
-				"""
-				- Only profiles trained in the Training tab will appear here
-				- Profile should represent the person whose face you want to swap
-				- For best results, use high-quality identity profiles (3+ source images)
-				"""
-			)
-
 		# Get available identity profiles
 		profiles = get_identity_manager().source_intelligence.list_profiles()
 		profile_choices = [(p.name, p.id) for p in profiles]
@@ -42,7 +31,7 @@ def render() -> None:
 				value=state_manager.get_item('source_profile_id_for_modeler'),
 				interactive=True,
 				elem_id="modeler_source_profile_dropdown",
-				info="Choose the source identity to train against the target",
+				info="Choose the source identity to train against the target. ❓ Only profiles trained in the Training tab will appear here. For best results, use high-quality identity profiles (3+ source images).",
 				scale=4
 			)
 			MODELER_SOURCE_REFRESH_BUTTON = gradio.Button(
