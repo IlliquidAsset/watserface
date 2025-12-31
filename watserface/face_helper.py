@@ -77,21 +77,22 @@ def predict_next_faces(face_history : List[List[Face]]) -> List[Face]:
 	prev_faces = face_history[-2]
 	predicted_faces = []
 
-	prev_centers = [ numpy.array([ (face.bounding_box[0] + face.bounding_box[2]) / 2, (face.bounding_box[1] + face.bounding_box[3]) / 2 ]) for face in prev_faces ]
+	prev_centers = [ ( (face.bounding_box[0] + face.bounding_box[2]) / 2, (face.bounding_box[1] + face.bounding_box[3]) / 2 ) for face in prev_faces ]
 
 	for last_face in last_faces:
 		closest_face = None
 		min_dist = float('inf')
-		last_center = numpy.array([ (last_face.bounding_box[0] + last_face.bounding_box[2]) / 2, (last_face.bounding_box[1] + last_face.bounding_box[3]) / 2 ])
+		last_center_x = (last_face.bounding_box[0] + last_face.bounding_box[2]) / 2
+		last_center_y = (last_face.bounding_box[1] + last_face.bounding_box[3]) / 2
 
 		for index, prev_face in enumerate(prev_faces):
-			prev_center = prev_centers[index]
-			dist = numpy.linalg.norm(last_center - prev_center)
+			prev_center_x, prev_center_y = prev_centers[index]
+			dist = (last_center_x - prev_center_x) ** 2 + (last_center_y - prev_center_y) ** 2
 			if dist < min_dist:
 				min_dist = dist
 				closest_face = prev_face
 
-		if closest_face and min_dist < 100:
+		if closest_face and min_dist < 10000:
 			delta_bbox = last_face.bounding_box - closest_face.bounding_box
 			delta_landmark_5 = last_face.landmark_set['5'] - closest_face.landmark_set['5']
 			delta_landmark_5_68 = last_face.landmark_set['5/68'] - closest_face.landmark_set['5/68']
