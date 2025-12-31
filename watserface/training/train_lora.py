@@ -266,7 +266,7 @@ def train_lora_model(
 			'compression_ratio': f"{pct:.2f}%"
 		}
 
-		yield "Exporting ONNX model with merged LoRA weights...", final_report
+		yield "🔄 Exporting ONNX model with merged LoRA weights...", final_report
 
 		# Export to ONNX
 		try:
@@ -277,6 +277,9 @@ def train_lora_model(
 
 			dummy_target = torch.randn(1, 3, 128, 128).to(device)
 			dummy_source = torch.randn(1, 512).to(device)
+
+			# Yield progress during export
+			yield "🔄 Creating ONNX graph...", final_report
 
 			torch.onnx.export(
 				model,
@@ -292,6 +295,9 @@ def train_lora_model(
 			)
 
 			logger.info(f"✅ LoRA model exported to: {output_path}", __name__)
+
+			# Yield progress during copy
+			yield "📦 Moving to trained models directory...", final_report
 
 			# Copy to assets/models/trained for use in face swapper
 			trained_models_dir = resolve_relative_path('../.assets/models/trained')
@@ -318,7 +324,7 @@ def train_lora_model(
 			logger.info(f"✅ LoRA model copied to assets: {final_model_path}", __name__)
 
 			final_report['model_path'] = final_model_path
-			yield f"✅ Exported to {final_model_path}", final_report
+			yield f"✅ Export Complete!\n\nModel saved to:\n{final_model_path}\n\nYou can now use '{model_name}' in the Swap tab.", final_report
 
 		except Exception as e:
 			logger.error(f"ONNX export failed: {e}", __name__)

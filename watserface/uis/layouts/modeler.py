@@ -215,7 +215,18 @@ Trainable Parameters: {trainable:,}
 def wrapped_stop_training():
 	"""Wrapper to format stop training output"""
 	from watserface.training import core as training_core
-	return training_core.stop_training()
+	stop_msg = training_core.stop_training()
+
+	# Provide detailed feedback about what happens next
+	return f"""⚠️ Training Stop Requested
+
+Current epoch will complete, then:
+1. 💾 Saving final checkpoint...
+2. 🔄 Exporting ONNX model with merged LoRA weights...
+3. 📦 Moving model to .assets/models/trained/
+4. ✅ Training complete!
+
+Please wait for export to finish..."""
 
 
 def update_model_name_visibility(mode: str, existing_lora: str = None) -> gradio.Textbox:
