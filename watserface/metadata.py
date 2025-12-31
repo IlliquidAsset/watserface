@@ -4,7 +4,7 @@ METADATA =\
 {
 	'name': 'WatserFace',
 	'description': '',
-	'version': '0.15.0',
+	'version': '0.15.1',
 	'license': 'OpenRAIL-AS',
 	'author': 'IlliquidAsset (based on FaceFusion by Henry Ruhs)',
 	'url': 'https://github.com/IlliquidAsset/facefusion'

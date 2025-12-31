@@ -15,21 +15,23 @@ def render() -> None:
 	"""Render the LoRA loader component"""
 	global LORA_MODE_RADIO, EXISTING_LORA_DROPDOWN
 
-	LORA_MODE_RADIO = gradio.Radio(
-		choices=["New LoRA", "Continue Training"],
-		value="New LoRA",
-		label="Training Mode"
-	)
+	with gradio.Row():
+		LORA_MODE_RADIO = gradio.Radio(
+			choices=["New LoRA", "Continue Training"],
+			value="New LoRA",
+			label="Training Mode",
+			scale=1
+		)
 
-	# Get existing LoRA checkpoints
-	lora_choices = get_existing_loras()
+		# Get existing LoRA checkpoints
+		lora_choices = get_existing_loras()
 
-	EXISTING_LORA_DROPDOWN = gradio.Dropdown(
-		choices=lora_choices,
-		label="Select LoRA to Continue",
-		visible=False,
-		info="Select an existing LoRA checkpoint to resume training"
-	)
+		EXISTING_LORA_DROPDOWN = gradio.Dropdown(
+			choices=lora_choices,
+			label="Select LoRA to Continue",
+			visible=False,
+			scale=2
+		)
 
 
 def listen() -> None:

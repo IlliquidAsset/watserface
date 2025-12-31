@@ -20,13 +20,10 @@ def render() -> None:
 	global MODELER_MODEL_NAME, MODELER_EPOCHS, MODELER_LEARNING_RATE, MODELER_LORA_RANK, MODELER_BATCH_SIZE
 
 	with gradio.Column():
-		gradio.Markdown("### ⚙️ Training Configuration")
-
 		MODELER_MODEL_NAME = gradio.Textbox(
 			label="Model Name",
 			placeholder="e.g. actor_to_corndog_scene",
 			value="",
-			info="Unique name for this paired model",
 			elem_id="modeler_model_name"
 		)
 
@@ -70,14 +67,6 @@ def render() -> None:
 				elem_id="modeler_batch_size"
 			)
 
-		gradio.Markdown(
-			"""
-			**💡 Recommended Settings:**
-			- **Quick Test**: 20 epochs, rank 8, batch 2
-			- **Balanced**: 100 epochs, rank 16, batch 4 (default)
-			- **High Quality**: 200 epochs, rank 32, batch 4
-			"""
-		)
 
 	# Register components
 	register_ui_component('modeler_model_name', MODELER_MODEL_NAME)

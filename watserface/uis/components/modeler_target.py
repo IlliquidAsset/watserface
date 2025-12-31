@@ -28,30 +28,17 @@ def render() -> None:
 
 	with gradio.Column():
 		MODELER_TARGET_FILE = gradio.File(
-			label="📁 Drop target video/image here or click to browse",
+			label="Drop target video/image here or click to browse",
 			file_count='single',
 			file_types=['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.mp4', '.mov', '.avi', '.mkv'],
 			value=state_manager.get_item('modeler_target_path'),
 			elem_id="modeler_target_file",
-			height=120,
-			info="Upload the target video/image to learn. ❓ Video is best for more training data, but images work for quick training. Higher quality = better results."
+			height=120
 		)
 
-		# Status display
-		MODELER_TARGET_STATUS = gradio.Textbox(
-			label="Status",
-			value="👆 Upload target video or image to continue",
-			interactive=False,
-			lines=2,
-			elem_id="modeler_target_status"
-		)
-
-		# Target information display
-		MODELER_TARGET_INFO = gradio.Markdown(
-			"",
-			visible=False,
-			elem_id="modeler_target_info"
-		)
+		# Hidden components for compatibility
+		MODELER_TARGET_STATUS = gradio.Textbox(visible=False)
+		MODELER_TARGET_INFO = gradio.Markdown(visible=False)
 
 		# Preview containers
 		target_file_path = state_manager.get_item('modeler_target_path')

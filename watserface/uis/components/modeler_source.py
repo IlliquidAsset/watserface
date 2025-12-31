@@ -26,12 +26,11 @@ def render() -> None:
 
 		with gradio.Row():
 			MODELER_SOURCE_PROFILE_DROPDOWN = gradio.Dropdown(
-				label="🎯 Select Identity Profile",
+				label="Select Identity Profile",
 				choices=profile_choices,
 				value=state_manager.get_item('source_profile_id_for_modeler'),
 				interactive=True,
 				elem_id="modeler_source_profile_dropdown",
-				info="Choose the source identity to train against the target. ❓ Only profiles trained in the Training tab will appear here. For best results, use high-quality identity profiles (3+ source images).",
 				scale=4
 			)
 			MODELER_SOURCE_REFRESH_BUTTON = gradio.Button(
@@ -41,21 +40,9 @@ def render() -> None:
 				scale=1
 			)
 
-		# Status display
-		MODELER_SOURCE_STATUS = gradio.Textbox(
-			label="Status",
-			value="👆 Select a source identity profile to continue",
-			interactive=False,
-			lines=2,
-			elem_id="modeler_source_status"
-		)
-
-		# Profile information display
-		MODELER_SOURCE_INFO = gradio.Markdown(
-			"",
-			visible=False,
-			elem_id="modeler_source_info"
-		)
+		# Hidden components for compatibility
+		MODELER_SOURCE_STATUS = gradio.Textbox(visible=False)
+		MODELER_SOURCE_INFO = gradio.Markdown(visible=False)
 
 	# Register components
 	register_ui_component('modeler_source_profile_dropdown', MODELER_SOURCE_PROFILE_DROPDOWN)

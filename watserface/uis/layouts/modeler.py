@@ -217,6 +217,25 @@ def wrapped_stop_training():
 	return training_core.stop_training()
 
 
+def update_model_name_visibility(mode: str, existing_lora: str = None) -> gradio.Textbox:
+	"""Update model name input based on training mode"""
+	if mode == "Continue Training":
+		if existing_lora:
+			return gradio.Textbox(value=existing_lora, interactive=False, label="Model Name (auto-filled from selected LoRA)")
+		else:
+			return gradio.Textbox(value="", interactive=False, label="Model Name (select LoRA first)")
+	else:
+		return gradio.Textbox(value="", interactive=True, label="Model Name")
+
+
+def update_model_name_from_lora(existing_lora: str = None) -> gradio.Textbox:
+	"""Update model name when LoRA is selected"""
+	if existing_lora:
+		return gradio.Textbox(value=existing_lora, interactive=False, label="Model Name (auto-filled from selected LoRA)")
+	else:
+		return gradio.Textbox(value="", interactive=False, label="Model Name (select LoRA first)")
+
+
 def pre_check() -> bool:
 	"""Pre-check for modeler tab"""
 	return True
@@ -337,6 +356,19 @@ def listen() -> None:
 	modeler_target.listen()
 	modeler_options.listen()
 	terminal.listen()
+
+	# Disable model name when continuing training
+	lora_loader.LORA_MODE_RADIO.change(
+		update_model_name_visibility,
+		inputs=[lora_loader.LORA_MODE_RADIO, lora_loader.EXISTING_LORA_DROPDOWN],
+		outputs=[modeler_options.MODELER_MODEL_NAME]
+	)
+
+	lora_loader.EXISTING_LORA_DROPDOWN.change(
+		update_model_name_from_lora,
+		inputs=[lora_loader.EXISTING_LORA_DROPDOWN],
+		outputs=[modeler_options.MODELER_MODEL_NAME]
+	)
 
 	# Wire up training buttons
 	START_MODELER_BUTTON.click(
