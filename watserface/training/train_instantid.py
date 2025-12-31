@@ -251,24 +251,27 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			'final_loss': f"{avg_loss:.4f}"
 		}
 		
-		yield "Exporting ONNX model... (This may take a moment)", final_report
+		# Only export if training was not stopped abruptly
+		from watserface.training.core import _training_stopped
+		if not _training_stopped:
+			yield "Exporting ONNX model... (This may take a moment)", final_report
 
-		# Export ONNX
-		output_path = os.path.join(dataset_dir, f"{model_name}.onnx")
-		dummy_input = torch.randn(1, 3, 128, 128).to(device)
-		dummy_id = torch.randn(1, 512).to(device)
-		
-		model.eval() # CRITICAL for BatchNorm export stability
-		
-		# Use older opset or standard export to avoid dynamo issues
-		torch.onnx.export(
-			model,
-			(dummy_input, dummy_id),
-			output_path,
-			input_names=['target', 'source_embedding'],
-			output_names=['output'],
-			dynamic_axes={'target': {0: 'batch'}, 'output': {0: 'batch'}}
-		)
-		
-		final_report['model_path'] = output_path
-		yield f"Exported to {output_path}", final_report
+			# Export ONNX
+			output_path = os.path.join(dataset_dir, f"{model_name}.onnx")
+			dummy_input = torch.randn(1, 3, 128, 128).to(device)
+			dummy_id = torch.randn(1, 512).to(device)
+
+			model.eval() # CRITICAL for BatchNorm export stability
+
+			# Use older opset or standard export to avoid dynamo issues
+			torch.onnx.export(
+				model,
+				(dummy_input, dummy_id),
+				output_path,
+				input_names=['target', 'source_embedding'],
+				output_names=['output'],
+				dynamic_axes={'target': {0: 'batch'}, 'output': {0: 'batch'}}
+			)
+
+			final_report['model_path'] = output_path
+			yield f"Exported to {output_path}", final_report

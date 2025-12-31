@@ -277,11 +277,11 @@ def update_preview_image(frame_number : int = 0) -> gradio.Image:
 			return gradio.Image(value = preview_vision_frame, elem_classes = [ 'image-preview', 'is-' + detect_frame_orientation(preview_vision_frame) ])
 	except AttributeError as error:
 		if "'NoneType' object has no attribute 'run'" in str(error):
-			logger.error('Face detector model not loaded. Please ensure all required models are downloaded.')
+			logger.error('Face detector model not loaded. Please ensure all required models are downloaded.', __name__)
 			return gradio.Image(value = None, elem_classes = None)
 		raise error
 	except Exception as error:
-		logger.error(f'Preview generation failed: {error}')
+		logger.error(f'Preview generation failed: {error}', __name__)
 		return gradio.Image(value = None, elem_classes = None)
 	return gradio.Image(value = None, elem_classes = None)
 

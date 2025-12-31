@@ -1,6 +1,8 @@
 from functools import lru_cache
 from typing import Optional, Tuple
 
+import threading
+
 import cv2
 import mediapipe
 import numpy
@@ -13,6 +15,7 @@ from watserface.thread_helper import conditional_thread_semaphore
 from watserface.types import Angle, BoundingBox, DownloadScope, DownloadSet, FaceLandmark5, FaceLandmark68, FaceLandmark478, InferencePool, ModelSet, Prediction, Score, VisionFrame
 
 MEDIAPIPE_FACE_MESH = None
+THREAD_LOCK : threading.Lock = threading.Lock()
 
 
 @lru_cache(maxsize = None)
@@ -195,7 +198,8 @@ def detect_with_mediapipe(temp_vision_frame : VisionFrame, bounding_box : Boundi
 	crop_vision_frame, affine_matrix = warp_face_by_translation(temp_vision_frame, translation, scale, model_size)
 	crop_vision_frame = cv2.warpAffine(crop_vision_frame, rotated_matrix, rotated_size)
 	
-	results = MEDIAPIPE_FACE_MESH.process(crop_vision_frame)
+	with THREAD_LOCK:
+		results = MEDIAPIPE_FACE_MESH.process(crop_vision_frame)
 	
 	if results.multi_face_landmarks:
 		face_landmarks = results.multi_face_landmarks[0]

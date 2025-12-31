@@ -105,11 +105,20 @@ def wrapped_start_identity_training(
         
         if telemetry:
             # Update history and plot
-            if 'loss' in telemetry and 'epoch' in telemetry:
+            loss_val = telemetry.get('loss') or telemetry.get('current_loss')
+            if loss_val is not None:
                 try:
+                    # If we have epoch progress, use it for X axis (e.g. 1.5 for mid epoch 1)
+                    epoch_val = int(telemetry.get('epoch', 0))
+
+                    if 'batch' in telemetry and 'total_batches' in telemetry:
+                        batch_fraction = int(telemetry['batch']) / int(telemetry['total_batches'])
+                        # Subtract 1 because epoch starts at 1, so epoch 1 + 0.5 is 1.5
+                        epoch_val = (epoch_val - 1) + batch_fraction
+
                     loss_history.append({
-                        'epoch': int(telemetry['epoch']),
-                        'loss': float(telemetry['loss'])
+                        'epoch': float(epoch_val),
+                        'loss': float(loss_val)
                     })
                     plot_update = pd.DataFrame(loss_history)
                 except (ValueError, TypeError):
