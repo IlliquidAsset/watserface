@@ -427,16 +427,75 @@ class SourceIntelligence:
     
     def save_profile(self, profile: IdentityProfile) -> None:
         """Save identity profile to disk"""
-        
+
         profile_dir = self.profiles_dir / profile.id
         profile_dir.mkdir(parents=True, exist_ok=True)
-        
+
         profile_file = profile_dir / "profile.json"
-        
+
         with open(profile_file, 'w') as f:
             json.dump(profile.to_dict(), f, indent=2)
-        
+
         logger.info(f"Saved identity profile to {profile_file}", __name__)
+
+    def enrich_profile(self, profile_id: str, new_embeddings: List[np.ndarray], new_stats: Dict[str, Any]) -> IdentityProfile:
+        """
+        Enrich existing profile with new embeddings (incremental training)
+
+        Args:
+            profile_id: ID of existing profile to enrich
+            new_embeddings: New embeddings to add
+            new_stats: Stats from new training session
+
+        Returns:
+            Updated profile with merged embeddings
+        """
+        # Load existing profile
+        existing_profile = self.load_profile(profile_id)
+
+        if existing_profile:
+            # Merge embeddings using incremental mean formula
+            old_count = existing_profile.quality_stats.get('final_embedding_count', 0)
+            new_count = len(new_embeddings)
+            total_count = old_count + new_count
+
+            # Get existing mean
+            old_mean = np.array(existing_profile.embedding_mean, dtype=np.float64)
+
+            # Calculate new mean from new embeddings
+            new_mean = np.mean(new_embeddings, axis=0).astype(np.float64)
+
+            # Combine using weighted average
+            combined_mean = (old_count * old_mean + new_count * new_mean) / total_count
+
+            # Calculate combined std (approximate - assumes independent samples)
+            if existing_profile.embedding_std:
+                old_std = np.array(existing_profile.embedding_std, dtype=np.float64)
+                new_std = np.std(new_embeddings, axis=0).astype(np.float64)
+
+                # Pooled standard deviation formula
+                combined_variance = ((old_count - 1) * old_std**2 + (new_count - 1) * new_std**2) / (total_count - 1)
+                combined_std = np.sqrt(combined_variance)
+            else:
+                combined_std = np.std(new_embeddings, axis=0).astype(np.float64)
+
+            # Update profile
+            existing_profile.embedding_mean = combined_mean.tolist()
+            existing_profile.embedding_std = combined_std.tolist()
+            existing_profile.last_used = datetime.now().isoformat()
+
+            # Merge quality stats
+            existing_profile.quality_stats['final_embedding_count'] = total_count
+            existing_profile.quality_stats['total_processed'] = existing_profile.quality_stats.get('total_processed', 0) + new_stats.get('total_processed', 0)
+            existing_profile.quality_stats['training_sessions'] = existing_profile.quality_stats.get('training_sessions', 1) + 1
+            existing_profile.quality_stats['last_training'] = datetime.now().isoformat()
+
+            logger.info(f"Enriched profile '{profile_id}': {old_count} → {total_count} embeddings ({new_count} new)", __name__)
+
+            return existing_profile
+        else:
+            # No existing profile, return None to signal new profile creation
+            return None
     
     def load_profile(self, profile_id: str) -> Optional[IdentityProfile]:
         """Load identity profile from disk"""

@@ -222,34 +222,35 @@ def start_identity_training(
 			yield [error_msg, telemetry]
 			return
 
-		if not onnx_path:
-			yield ["❌ Training failed to produce model.", telemetry]
-			return
-	
-		# Copy to assets
-		trained_models_dir = resolve_relative_path('../.assets/models/trained')
-		if not os.path.exists(trained_models_dir):
-			os.makedirs(trained_models_dir, exist_ok=True)
-		
-		final_model_path = os.path.join(trained_models_dir, os.path.basename(onnx_path))
-		shutil.copy(onnx_path, final_model_path)
+		# Copy ONNX model to assets (if training completed)
+		final_model_path = None
+		if onnx_path:
+			# Training completed - copy model
+			trained_models_dir = resolve_relative_path('../.assets/models/trained')
+			if not os.path.exists(trained_models_dir):
+				os.makedirs(trained_models_dir, exist_ok=True)
 
-		# Copy checkpoint
-		checkpoint_src = os.path.splitext(onnx_path)[0] + '.pth'
-		checkpoint_dst = os.path.splitext(final_model_path)[0] + '.pth'
-		if os.path.exists(checkpoint_src):
-			shutil.copy(checkpoint_src, checkpoint_dst)
+			final_model_path = os.path.join(trained_models_dir, os.path.basename(onnx_path))
+			shutil.copy(onnx_path, final_model_path)
 
-		# Generate hash file
-		import zlib
-		with open(final_model_path, 'rb') as f:
-			model_content = f.read()
-		model_hash = format(zlib.crc32(model_content), '08x')
-		final_hash_path = os.path.splitext(final_model_path)[0] + '.hash'
-		with open(final_hash_path, 'w') as f:
-			f.write(model_hash)
+			# Copy checkpoint
+			checkpoint_src = os.path.splitext(onnx_path)[0] + '.pth'
+			checkpoint_dst = os.path.splitext(final_model_path)[0] + '.pth'
+			if os.path.exists(checkpoint_src):
+				shutil.copy(checkpoint_src, checkpoint_dst)
 
-		logger.info(f"Identity model trained successfully and saved to: {final_model_path}", __name__)
+			# Generate hash file
+			import zlib
+			with open(final_model_path, 'rb') as f:
+				model_content = f.read()
+			model_hash = format(zlib.crc32(model_content), '08x')
+			final_hash_path = os.path.splitext(final_model_path)[0] + '.hash'
+			with open(final_hash_path, 'w') as f:
+				f.write(model_hash)
+
+			logger.info(f"Identity model trained successfully and saved to: {final_model_path}", __name__)
+		else:
+			logger.info("Training session incomplete - ONNX model not exported yet", __name__)
 
 		# Step 4: Create and save identity profile
 		try:
@@ -284,28 +285,54 @@ def start_identity_training(
 			logger.info(f"Processed {frames_processed} frames, extracted {len(embeddings)} embeddings", __name__)
 
 			if embeddings:
-				# Calculate mean embedding
-				embedding_mean = np.mean(embeddings, axis=0).tolist()
-
-				# Create identity profile
 				manager = identity_profile.get_identity_manager()
-				profile = identity_profile.IdentityProfile(
-					id=model_name.lower().replace(' ', '_'),
-					name=model_name,
-					embedding_mean=embedding_mean,
-					quality_stats={
-						'total_processed': len(frame_paths),
-						'final_embedding_count': len(embeddings),
-						'source_count': len(source_paths) if source_paths else 0
-					}
-				)
+				profile_id = model_name.lower().replace(' ', '_')
 
-				# Save profile
+				# Try to enrich existing profile first
+				new_stats = {
+					'total_processed': len(frame_paths),
+					'source_count': len(source_paths) if source_paths else 0
+				}
+
+				enriched_profile = manager.source_intelligence.enrich_profile(profile_id, embeddings, new_stats)
+
+				if enriched_profile:
+					# Enriched existing profile
+					profile = enriched_profile
+					action = "enriched"
+					logger.info(f"✅ Enriched existing identity profile '{model_name}' (now {enriched_profile.quality_stats.get('final_embedding_count')} total embeddings)", __name__)
+				else:
+					# Create new profile
+					embedding_mean = np.mean(embeddings, axis=0).tolist()
+					embedding_std = np.std(embeddings, axis=0).tolist()
+
+					profile = identity_profile.IdentityProfile(
+						id=profile_id,
+						name=model_name,
+						created_at=__import__('datetime').datetime.now().isoformat(),
+						source_files=source_paths if source_paths else [],
+						embedding_mean=embedding_mean,
+						embedding_std=embedding_std,
+						quality_stats={
+							'total_processed': len(frame_paths),
+							'final_embedding_count': len(embeddings),
+							'source_count': len(source_paths) if source_paths else 0,
+							'training_sessions': 1,
+							'last_training': __import__('datetime').datetime.now().isoformat()
+						},
+						is_ephemeral=False
+					)
+					action = "created"
+					logger.info(f"✅ Created new identity profile '{model_name}' with {len(embeddings)} embeddings", __name__)
+
+				# Save profile (create or update)
 				manager.source_intelligence.save_profile(profile)
-				logger.info(f"✅ Saved identity profile '{model_name}' with {len(embeddings)} embeddings", __name__)
 
 				telemetry['profile_saved'] = True
+				telemetry['profile_action'] = action
 				telemetry['embedding_count'] = len(embeddings)
+				telemetry['total_embeddings'] = profile.quality_stats.get('final_embedding_count', len(embeddings))
+				telemetry['training_sessions'] = profile.quality_stats.get('training_sessions', 1)
 			else:
 				error_msg = f"❌ No embeddings extracted from {frames_processed} frames - profile not created. Check that frames contain visible faces."
 				logger.warn(error_msg, __name__)
@@ -325,13 +352,26 @@ def start_identity_training(
 			logger.info(f"Recorded training use for Face Set {face_set_id}", __name__)
 
 		# Final status message
-		telemetry['status'] = 'Complete'
-		telemetry['model_path'] = final_model_path
+		telemetry['status'] = 'Complete' if onnx_path else 'Incomplete (Stopped)'
+		if final_model_path:
+			telemetry['model_path'] = final_model_path
 
 		if telemetry.get('profile_saved'):
-			final_message = f"✅ Identity Model '{model_name}' trained successfully! Profile created with {telemetry['embedding_count']} embeddings."
+			if telemetry.get('profile_action') == 'enriched':
+				if onnx_path:
+					final_message = f"✅ Identity Model '{model_name}' trained successfully! Profile enriched: +{telemetry['embedding_count']} new embeddings (total: {telemetry['total_embeddings']}, session #{telemetry['training_sessions']})"
+				else:
+					final_message = f"⚠️ Training stopped early. Profile enriched: +{telemetry['embedding_count']} new embeddings (total: {telemetry['total_embeddings']}, session #{telemetry['training_sessions']}). Resume training to complete."
+			else:
+				if onnx_path:
+					final_message = f"✅ Identity Model '{model_name}' trained successfully! Profile created with {telemetry['embedding_count']} embeddings."
+				else:
+					final_message = f"⚠️ Training stopped early. Profile created with {telemetry['embedding_count']} embeddings. Resume training to export ONNX model."
 		else:
-			final_message = f"⚠️ Identity Model '{model_name}' trained, but profile creation failed. {telemetry.get('error', 'Unknown error')}"
+			if onnx_path:
+				final_message = f"⚠️ Identity Model '{model_name}' trained, but profile creation failed. {telemetry.get('error', 'Unknown error')}"
+			else:
+				final_message = f"⚠️ Training stopped early and profile creation failed. {telemetry.get('error', 'Unknown error')}"
 
 		yield [final_message, telemetry]
 
