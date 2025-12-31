@@ -7,6 +7,9 @@ def main():
     # Set the environment variable required for Pydantic/PyO3 compatibility on some systems
     os.environ['PYO3_USE_ABI3_FORWARD_COMPATIBILITY'] = '1'
     
+    from watserface import metadata
+    print(f"--- {metadata.get('name')} v{metadata.get('version')} ---")
+    
     # Construct the command to run watserface.py using the current Python interpreter
     cmd = [sys.executable, '-u', 'watserface.py', 'run'] + sys.argv[1:]
     

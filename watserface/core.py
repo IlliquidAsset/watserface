@@ -32,6 +32,8 @@ from watserface.vision import pack_resolution, read_image, read_static_images, r
 def cli() -> None:
 	if pre_check():
 		signal.signal(signal.SIGINT, signal_exit)
+		from watserface import metadata
+		print(f"--- {metadata.get('name')} v{metadata.get('version')} ---")
 		program = create_program()
 
 		print("Checking args...")
