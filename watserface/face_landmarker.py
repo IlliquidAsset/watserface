@@ -204,7 +204,9 @@ def detect_with_mediapipe(temp_vision_frame : VisionFrame, bounding_box : Boundi
 	if results.multi_face_landmarks:
 		face_landmarks = results.multi_face_landmarks[0]
 		h, w, _ = crop_vision_frame.shape
-		landmarks_478 = numpy.array([ [ lm.x * w, lm.y * h ] for lm in face_landmarks.landmark ]).astype(numpy.float32)
+		# Capture Z-coordinate (depth relative to face centroid, normalized similarly to x/y)
+		# We un-normalize x and y by width/height. Z is usually normalized by image width in MediaPipe.
+		landmarks_478 = numpy.array([ [ lm.x * w, lm.y * h, lm.z * w ] for lm in face_landmarks.landmark ]).astype(numpy.float32)
 		
 		# Map 478 to 68 (Approximate indices)
 		# This is a basic mapping, a full mapping is verbose
@@ -214,6 +216,9 @@ def detect_with_mediapipe(temp_vision_frame : VisionFrame, bounding_box : Boundi
 		else:
 			# Fallback if mapping is wrong (safety)
 			landmarks_68 = landmarks_478[:68]
+
+		# Strip Z for 68 landmarks to maintain compatibility with 2D-only consumers
+		landmarks_68 = landmarks_68[:, :2]
 
 		landmarks_68 = transform_points(landmarks_68, cv2.invertAffineTransform(rotated_matrix))
 		landmarks_68 = transform_points(landmarks_68, cv2.invertAffineTransform(affine_matrix))

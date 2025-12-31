@@ -3,6 +3,7 @@ from typing import List, Sequence, Tuple
 
 import cv2
 import numpy
+import scipy.spatial
 from cv2.typing import Size
 
 from watserface.types import Anchors, Angle, BoundingBox, Distance, Face, FaceDetectorModel, FaceLandmark5, FaceLandmark68, FaceLandmark478, Mask, Matrix, Points, Scale, Score, Translation, VisionFrame, WarpTemplate, WarpTemplateSet
@@ -424,3 +425,68 @@ def merge_matrix(matrices : List[Matrix]) -> Matrix:
 		matrix = numpy.vstack([ matrix, [ 0, 0, 1 ] ])
 		merged_matrix = numpy.dot(merged_matrix, matrix)
 	return merged_matrix[:2, :]
+
+
+def create_normal_map(landmarks_478: FaceLandmark478, size: Size) -> VisionFrame:
+	"""
+	Generate a normal map from 3D landmarks.
+	Uses Delaunay triangulation on 2D projection to recover mesh topology,
+	then computes 3D surface normals.
+
+	Returns:
+		Normal map image (RGB) where R=X, G=Y, B=Z (0-255).
+	"""
+	width, height = size
+
+	# Validate input
+	if landmarks_478.shape[1] < 3:
+		# Fallback if Z is missing (should not happen with new capture)
+		return numpy.zeros((height, width, 3), dtype=numpy.uint8)
+
+	# 1. Triangulate based on 2D projection
+	try:
+		tri = scipy.spatial.Delaunay(landmarks_478[:, :2])
+	except Exception:
+		return numpy.zeros((height, width, 3), dtype=numpy.uint8)
+
+	# 2. Compute face normals
+	# Get vertices for each triangle
+	tris = landmarks_478[tri.simplices]
+	# Vectors for two edges
+	v1 = tris[:, 1] - tris[:, 0]
+	v2 = tris[:, 2] - tris[:, 0]
+	# Cross product for normal
+	# Note: Z is depth. We assume right-handed system.
+	normals = numpy.cross(v1, v2)
+	# Normalize
+	norms = numpy.linalg.norm(normals, axis=1, keepdims=True)
+	# Avoid division by zero
+	norms[norms == 0] = 1.0
+	normals /= norms
+
+	# 3. Rasterize
+	# Map normals from [-1, 1] to [0, 255]
+	# Standard normal map convention: (x+1)/2, (y+1)/2, (z+1)/2
+	# We flip Y usually for image coords vs 3D coords, but let's keep it raw for now.
+	normal_colors = ((normals + 1) * 0.5 * 255).astype(numpy.uint8)
+
+	# Create blank image
+	normal_map = numpy.zeros((height, width, 3), dtype=numpy.uint8)
+
+	# Fill triangles
+	# Note: cv2.fillPoly expects integer points
+	pts = landmarks_478[tri.simplices][:, :, :2].astype(numpy.int32)
+
+	# We process triangle by triangle or batch.
+	# Batch drawing with separate colors is tricky in pure cv2 without loop.
+	# But looping 900 triangles is fast enough in Python.
+	for i, tri_pts in enumerate(pts):
+		color = normal_colors[i].tolist()
+		# Use fillConvexPoly for speed on triangles
+		cv2.fillConvexPoly(normal_map, tri_pts, color)
+
+	# 4. Smooth gaps (dilation)
+	kernel = numpy.ones((3,3), numpy.uint8)
+	normal_map = cv2.morphologyEx(normal_map, cv2.MORPH_CLOSE, kernel)
+
+	return normal_map
