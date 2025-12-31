@@ -51,6 +51,7 @@ def render() -> None:
 		reference_face_gallery_options['value'] = extract_gallery_frames(reference_frame)
 	FACE_SELECTOR_MODE_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.face_selector_mode_dropdown'),
+		info = wording.get('help.face_selector_mode'),
 		choices = watserface.choices.face_selector_modes,
 		value = state_manager.get_item('face_selector_mode')
 	)
@@ -59,16 +60,19 @@ def render() -> None:
 		with gradio.Row():
 			FACE_SELECTOR_ORDER_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.face_selector_order_dropdown'),
+				info = wording.get('help.face_selector_order'),
 				choices = watserface.choices.face_selector_orders,
 				value = state_manager.get_item('face_selector_order')
 			)
 			FACE_SELECTOR_GENDER_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.face_selector_gender_dropdown'),
+				info = wording.get('help.face_selector_gender'),
 				choices = [ 'none' ] + watserface.choices.face_selector_genders,
 				value = state_manager.get_item('face_selector_gender') or 'none'
 			)
 			FACE_SELECTOR_RACE_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.face_selector_race_dropdown'),
+				info = wording.get('help.face_selector_race'),
 				choices = ['none'] + watserface.choices.face_selector_races,
 				value = state_manager.get_item('face_selector_race') or 'none'
 			)
@@ -77,6 +81,7 @@ def render() -> None:
 			face_selector_age_end = state_manager.get_item('face_selector_age_end') or watserface.choices.face_selector_age_range[-1]
 			FACE_SELECTOR_AGE_RANGE_SLIDER = RangeSlider(
 				label = wording.get('uis.face_selector_age_range_slider'),
+				info = wording.get('help.face_selector_age_range'),
 				minimum = watserface.choices.face_selector_age_range[0],
 				maximum = watserface.choices.face_selector_age_range[-1],
 				value = (face_selector_age_start, face_selector_age_end),
@@ -84,6 +89,7 @@ def render() -> None:
 			)
 	REFERENCE_FACE_DISTANCE_SLIDER = gradio.Slider(
 		label = wording.get('uis.reference_face_distance_slider'),
+		info = wording.get('help.reference_face_distance'),
 		value = state_manager.get_item('reference_face_distance'),
 		step = calc_float_step(watserface.choices.reference_face_distance_range),
 		minimum = watserface.choices.reference_face_distance_range[0],
