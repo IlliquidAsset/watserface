@@ -3,8 +3,7 @@ import argparse
 import cv2
 import numpy
 from watserface import wording
-from watserface.types import Args, Frame, Face, FaceSet, VisionFrame, AudioFrame
-from watserface.processors.core import register_args
+from watserface.types import ApplyStateItem, Args, Face, FaceSet, VisionFrame, AudioFrame
 
 # Define the name of the module
 NAME = 'WATSERFACE.PROCESSORS.OCCLUSION_INPAINTER'
@@ -25,7 +24,7 @@ def register_args(program: argparse.ArgumentParser) -> None:
 	pass
 
 
-def apply_args(program: Args) -> None:
+def apply_args(args: Args, apply_state_item: ApplyStateItem) -> None:
 	"""Apply arguments to the processor"""
 	pass
 
@@ -45,9 +44,9 @@ def post_process() -> None:
 	pass
 
 
-def get_reference_frame(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
+def get_reference_frame(source_face: Face, target_face: Face, temp_vision_frame: VisionFrame) -> VisionFrame:
 	"""Get reference frame"""
-	return temp_frame
+	return temp_vision_frame
 
 
 def process_frame(inputs: Any) -> VisionFrame:
