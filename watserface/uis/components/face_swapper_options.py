@@ -28,12 +28,13 @@ def get_available_models() -> List[str]:
 		if model_path and os.path.exists(model_path):
 			available_models.append(model_name)
 
-	# Always include trained models (they exist in the trained folder)
+	# Always include trained LoRA models (filter out identity models)
 	trained_model_file_paths = resolve_file_paths(resolve_relative_path('../.assets/models/trained'))
 	if trained_model_file_paths:
 		for model_file_path in trained_model_file_paths:
 			model_name = get_file_name(model_file_path)
-			if model_name not in available_models:
+			# Only include LoRA models (with _lora suffix), exclude identity models
+			if '_lora' in model_name and model_name not in available_models:
 				available_models.append(model_name)
 
 	return available_models
@@ -102,19 +103,20 @@ def remote_update(processors : List[str]) -> Tuple[gradio.Dropdown, gradio.Butto
 
 
 def update_face_swapper_choices() -> gradio.Dropdown:
-	"""Refresh the model choices to include newly downloaded or trained models"""
+	"""Refresh the model choices to include newly downloaded or trained LoRA models"""
 	face_swapper.create_static_model_set.cache_clear()
 
 	# Get available models (only those that exist on disk)
 	available_models = get_available_models()
 
-	# Update the processors choices to include any new trained models
+	# Update the processors choices to include any new trained LoRA models
 	trained_model_file_paths = resolve_file_paths(resolve_relative_path('../.assets/models/trained'))
 	if trained_model_file_paths:
 		for model_file_path in trained_model_file_paths:
 			model_name = get_file_name(model_file_path)
-			if model_name not in processors_choices.face_swapper_set:
-				processors_choices.face_swapper_set[model_name] = [ '256x256', '512x512' ]
+			# Only add LoRA models to processor choices
+			if '_lora' in model_name and model_name not in processors_choices.face_swapper_set:
+				processors_choices.face_swapper_set[model_name] = [ '128x128', '256x256' ]
 
 	return gradio.Dropdown(choices = available_models)
 

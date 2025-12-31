@@ -439,6 +439,30 @@ def clear_inference_pool() -> None:
 
 def get_model_options() -> ModelOptions:
 	model_name = get_model_name()
+
+	# Handle LoRA models dynamically
+	if model_name and '_lora' in model_name:
+		from watserface.filesystem import resolve_relative_path
+		import os
+
+		model_path = resolve_relative_path(f'../.assets/models/trained/{model_name}.onnx')
+		if os.path.exists(model_path):
+			# Create model options for LoRA model
+			return {
+				'type': 'inswapper',  # LoRA uses inswapper architecture
+				'size': (128, 128),
+				'path': model_path,
+				'template': 'arcface_128_v2',
+				'hashes': {},
+				'sources': {
+					'face_swapper': {
+						'url': None,  # Local model
+						'path': model_path
+					}
+				}
+			}
+
+	# Standard models from static set
 	options = create_static_model_set('full').get(model_name)
 	if options is None:
 		create_static_model_set.cache_clear()
