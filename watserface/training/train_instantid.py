@@ -5,10 +5,33 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 import cv2
-from typing import Iterator, Tuple, Dict
+from typing import Iterator, Tuple, Dict, List
 import time
+import json
 
 from watserface import logger
+
+
+def load_loss_history(dataset_dir: str, model_name: str) -> List[Dict]:
+	"""Load historical loss data for this model"""
+	history_path = os.path.join(dataset_dir, f"{model_name}_loss_history.json")
+	if os.path.exists(history_path):
+		try:
+			with open(history_path, 'r') as f:
+				return json.load(f)
+		except Exception as e:
+			logger.warn(f"Could not load loss history: {e}", __name__)
+	return []
+
+
+def save_loss_history(dataset_dir: str, model_name: str, history: List[Dict]) -> None:
+	"""Save loss history for this model"""
+	history_path = os.path.join(dataset_dir, f"{model_name}_loss_history.json")
+	try:
+		with open(history_path, 'w') as f:
+			json.dump(history, f, indent=2)
+	except Exception as e:
+		logger.warn(f"Could not save loss history: {e}", __name__)
 
 
 # --- SimSwap / Ghost Architecture Stub ---
@@ -140,6 +163,17 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 	start_time = time.time()
 	total_batches = len(dataloader)
 
+	# Load historical loss data
+	loss_history = load_loss_history(dataset_dir, model_name)
+	logger.info(f"Loaded {len(loss_history)} historical loss entries", __name__)
+
+	# Yield historical data first so UI can display it
+	if loss_history:
+		yield f"Loaded {len(loss_history)} historical epochs", {
+			'status': 'Loading History',
+			'historical_loss': loss_history
+		}
+
 	try:
 		for epoch in range(start_epoch, epochs):
 			epoch_loss = 0
@@ -158,20 +192,22 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 
 				# Update batch progress every 10% or every 5 batches
 				if batch_idx % max(1, total_batches // 10) == 0 or batch_idx == 0:
-					# Calculate overall progress (across all epochs)
-					overall_progress = ((epoch * total_batches) + (batch_idx + 1)) / (epochs * total_batches)
-
+					# Calculate progress metrics
 					batch_progress = (batch_idx + 1) / total_batches * 100
+					epoch_progress = (batch_idx + 1) / total_batches * 100  # Same as batch progress within epoch
+					overall_progress = ((epoch * total_batches) + (batch_idx + 1)) / (epochs * total_batches) * 100
 					current_loss = epoch_loss / (batch_idx + 1)
 
 					# Yield batch-level progress
 					batch_telemetry = {
 						'epoch': epoch + 1,
 						'total_epochs': epochs,
-						'epoch_progress': f"{batch_progress:.0f}%",
 						'batch': batch_idx + 1,
 						'total_batches': total_batches,
-						'current_loss': float(f"{current_loss:.4f}"),
+						'batch_progress': f"{batch_progress:.0f}%",
+						'epoch_progress': f"{epoch_progress:.0f}%",
+						'overall_progress': f"{overall_progress:.1f}%",
+						'loss': float(f"{current_loss:.4f}"),
 						'device': str(device)
 					}
 					yield f"Epoch {epoch + 1}/{epochs} - Batch {batch_idx + 1}/{total_batches} ({batch_progress:.0f}%) | Loss: {current_loss:.4f}", batch_telemetry
@@ -186,8 +222,10 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 			remaining_epochs = epochs - (epoch + 1)
 			eta_seconds = avg_time_per_epoch * remaining_epochs
 
-			# Calculate overall progress percentage
+			# Calculate progress percentages
 			overall_progress = ((epoch + 1) / epochs) * 100
+			epoch_progress = 100.0  # Epoch just completed
+			batch_progress = 100.0  # All batches completed
 
 			telemetry = {
 				'epoch': epoch + 1,
@@ -196,10 +234,21 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 				'epoch_time': f"{int(epoch_time)}s",
 				'eta': f"{int(eta_seconds // 60)}m {int(eta_seconds % 60)}s",
 				'overall_progress': f"{overall_progress:.1f}%",
+				'epoch_progress': f"{epoch_progress:.0f}%",
+				'batch_progress': f"{batch_progress:.0f}%",
+				'batch': total_batches,
+				'total_batches': total_batches,
 				'frames_used': len(dataset),
 				'batch_size': batch_size,
 				'device': str(device)
 			}
+
+			# Save loss to history
+			loss_history.append({
+				'epoch': epoch + 1,
+				'loss': float(f"{avg_loss:.4f}"),
+				'timestamp': time.time()
+			})
 
 			# Log to terminal every epoch or every 10%
 			if epoch % max(1, epochs // 10) == 0 or epoch == epochs - 1:
@@ -239,6 +288,10 @@ def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_
 		}
 		torch.save(checkpoint_state, checkpoint_path)
 		logger.info("💾 Final checkpoint saved", __name__)
+
+		# Save loss history
+		save_loss_history(dataset_dir, model_name, loss_history)
+		logger.info(f"💾 Loss history saved ({len(loss_history)} epochs)", __name__)
 		
 		# Final Report Calculation
 		total_time = time.time() - start_time

@@ -69,6 +69,7 @@ def wrapped_start_identity_training(
     last_update = 0
     last_status = None
     loss_history = []
+    historical_loaded = False
 
     # Determine parameters based on source type
     if source_type == "Face Set":
@@ -104,6 +105,17 @@ def wrapped_start_identity_training(
         metrics_html = generate_metrics_html({})
         
         if telemetry:
+            # Load historical data if available
+            if not historical_loaded and 'historical_loss' in telemetry:
+                historical_data = telemetry['historical_loss']
+                for entry in historical_data:
+                    loss_history.append({
+                        'epoch': float(entry['epoch']),
+                        'loss': float(entry['loss'])
+                    })
+                historical_loaded = True
+                plot_update = pd.DataFrame(loss_history)
+
             # Update history and plot
             loss_val = telemetry.get('loss') or telemetry.get('current_loss')
             if loss_val is not None:
