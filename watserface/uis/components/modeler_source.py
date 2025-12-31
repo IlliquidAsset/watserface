@@ -10,13 +10,14 @@ from watserface.uis.core import register_ui_component
 
 
 MODELER_SOURCE_PROFILE_DROPDOWN: Optional[gradio.Dropdown] = None
+MODELER_SOURCE_REFRESH_BUTTON: Optional[gradio.Button] = None
 MODELER_SOURCE_STATUS: Optional[gradio.Textbox] = None
 MODELER_SOURCE_INFO: Optional[gradio.Markdown] = None
 
 
 def render() -> None:
 	"""Render identity profile selector for Modeler tab"""
-	global MODELER_SOURCE_PROFILE_DROPDOWN, MODELER_SOURCE_STATUS, MODELER_SOURCE_INFO
+	global MODELER_SOURCE_PROFILE_DROPDOWN, MODELER_SOURCE_REFRESH_BUTTON, MODELER_SOURCE_STATUS, MODELER_SOURCE_INFO
 
 	with gradio.Column():
 		gradio.Markdown(
@@ -35,14 +36,22 @@ def render() -> None:
 		profiles = get_identity_manager().source_intelligence.list_profiles()
 		profile_choices = [(p.name, p.id) for p in profiles]
 
-		MODELER_SOURCE_PROFILE_DROPDOWN = gradio.Dropdown(
-			label="🎯 Select Identity Profile",
-			choices=profile_choices,
-			value=state_manager.get_item('source_profile_id_for_modeler'),
-			interactive=True,
-			elem_id="modeler_source_profile_dropdown",
-			info="Choose the source identity to train against the target"
-		)
+		with gradio.Row():
+			MODELER_SOURCE_PROFILE_DROPDOWN = gradio.Dropdown(
+				label="🎯 Select Identity Profile",
+				choices=profile_choices,
+				value=state_manager.get_item('source_profile_id_for_modeler'),
+				interactive=True,
+				elem_id="modeler_source_profile_dropdown",
+				info="Choose the source identity to train against the target",
+				scale=4
+			)
+			MODELER_SOURCE_REFRESH_BUTTON = gradio.Button(
+				"🔄",
+				variant="secondary",
+				elem_id="modeler_source_refresh_button",
+				scale=1
+			)
 
 		# Status display
 		MODELER_SOURCE_STATUS = gradio.Textbox(
@@ -62,6 +71,7 @@ def render() -> None:
 
 	# Register components
 	register_ui_component('modeler_source_profile_dropdown', MODELER_SOURCE_PROFILE_DROPDOWN)
+	register_ui_component('modeler_source_refresh_button', MODELER_SOURCE_REFRESH_BUTTON)
 	register_ui_component('modeler_source_status', MODELER_SOURCE_STATUS)
 	register_ui_component('modeler_source_info', MODELER_SOURCE_INFO)
 
@@ -74,6 +84,24 @@ def listen() -> None:
 			inputs=[MODELER_SOURCE_PROFILE_DROPDOWN],
 			outputs=[MODELER_SOURCE_STATUS, MODELER_SOURCE_INFO]
 		)
+	
+	if MODELER_SOURCE_REFRESH_BUTTON:
+		MODELER_SOURCE_REFRESH_BUTTON.click(
+			refresh_source_profiles,
+			outputs=[MODELER_SOURCE_PROFILE_DROPDOWN]
+		)
+
+
+def refresh_source_profiles() -> gradio.Dropdown:
+	"""Refresh the list of identity profiles"""
+	try:
+		manager = get_identity_manager()
+		profiles = manager.source_intelligence.list_profiles()
+		profile_choices = [(p.name, p.id) for p in profiles]
+		return gradio.Dropdown(choices=profile_choices)
+	except Exception as e:
+		logger.error(f"Failed to refresh profiles: {e}", __name__)
+		return gradio.Dropdown()
 
 
 def update_source_profile(profile_id: str = None) -> Tuple[str, str]:
