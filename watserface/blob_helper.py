@@ -79,10 +79,6 @@ class BlobOrchestrator:
         # If it's a string path that doesn't exist, assume it's an ID (Legacy/Internal)
         if isinstance(first_source, str) and not os.path.exists(first_source):
              is_face_set = True
-        # If it is a file ending in specific extensions (if face sets are files)
-        # Note: Codebase seems to treat Face Sets as IDs mostly, but we should be robust.
-        # Assuming Face Sets might be uploaded as .fs files or similar if implemented.
-        # For now, we rely on the ID check or single file count with specialized handling if needed.
 
         if is_face_set:
             strategy["source_type"] = "face_set"

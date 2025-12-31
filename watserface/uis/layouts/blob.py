@@ -44,12 +44,6 @@ def render() -> gradio.Blocks:
             # Source Column
             with gradio.Column(scale=1, elem_classes=["blob-glass"]):
                 gradio.Markdown("### 🧬 SOURCE DNA")
-                # Using standard source component but will need to ensure it fits style
-                # For now, we use standard, but maybe we should expose a simpler one?
-                # Let's use the 'source' component but we might need to hide its accordion
-                # source.render() creates its own structure.
-                # To be "Drop and Go", we want File Input directly.
-
                 # Re-implementing a simple source input to avoid legacy UI clutter
                 BLOB_SOURCE = gradio.File(
                     label="Drop Source Images or Face Set",
@@ -57,9 +51,6 @@ def render() -> gradio.Blocks:
                     file_types=[".png", ".jpg", ".webp", ".txt"], # .txt for face set? No, usually json or internal ID.
                     elem_id="blob_source"
                 )
-
-                # Hidden Face Set selector (optional, if we want to expose it)
-                # For Dr. Blob, we assume drag and drop mostly.
 
             # Target Column
             with gradio.Column(scale=1, elem_classes=["blob-glass"]):
