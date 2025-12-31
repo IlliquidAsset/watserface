@@ -55,6 +55,7 @@ def start_identity_training(
 	global _training_stopped
 	_training_stopped = False
 	telemetry = {'status': 'initializing'}
+	source_paths = []  # Track source paths for profile metadata
 
 	try:
 		if not model_name:
@@ -79,6 +80,9 @@ def start_identity_training(
 
 			# Point to Face Set's frames directory
 			dataset_path = face_set_manager.get_face_set_frames_path(face_set_id)
+
+			# Track source files from Face Set metadata
+			source_paths = face_set.source_files if hasattr(face_set, 'source_files') else []
 
 			telemetry['status'] = 'Using Face Set'
 			telemetry['face_set_id'] = face_set_id
@@ -255,17 +259,29 @@ def start_identity_training(
 			# Extract embeddings from all frames in dataset
 			frame_paths = resolve_file_paths(dataset_path)
 			embeddings = []
+			frames_processed = 0
+
+			logger.info(f"Extracting embeddings from {len(frame_paths)} frames (sampling 100)...", __name__)
 
 			for frame_path in frame_paths[:100]:  # Limit to 100 frames for performance
 				if frame_path.endswith(('.jpg', '.png')):
+					frames_processed += 1
 					try:
 						frame = read_static_image(frame_path)
+						# get_one_face expects a list of frames
 						face = get_one_face([frame])
-						if face and face.embedding is not None:
+						if face and hasattr(face, 'embedding') and face.embedding is not None:
 							embeddings.append(face.embedding)
+							logger.debug(f"Extracted embedding from {frame_path}", __name__)
+						else:
+							logger.debug(f"No face detected in {frame_path}", __name__)
 					except Exception as e:
-						logger.debug(f"Skipping frame {frame_path}: {e}", __name__)
+						logger.debug(f"Error processing frame {frame_path}: {e}", __name__)
+						import traceback
+						logger.debug(traceback.format_exc(), __name__)
 						continue
+
+			logger.info(f"Processed {frames_processed} frames, extracted {len(embeddings)} embeddings", __name__)
 
 			if embeddings:
 				# Calculate mean embedding
@@ -280,31 +296,44 @@ def start_identity_training(
 					quality_stats={
 						'total_processed': len(frame_paths),
 						'final_embedding_count': len(embeddings),
-						'source_count': len(source_paths)
+						'source_count': len(source_paths) if source_paths else 0
 					}
 				)
 
 				# Save profile
 				manager.source_intelligence.save_profile(profile)
-				logger.info(f"Saved identity profile '{model_name}' with {len(embeddings)} embeddings", __name__)
+				logger.info(f"✅ Saved identity profile '{model_name}' with {len(embeddings)} embeddings", __name__)
 
 				telemetry['profile_saved'] = True
 				telemetry['embedding_count'] = len(embeddings)
 			else:
-				logger.warn(f"No embeddings extracted - profile not created", __name__)
+				error_msg = f"❌ No embeddings extracted from {frames_processed} frames - profile not created. Check that frames contain visible faces."
+				logger.warn(error_msg, __name__)
 				telemetry['profile_saved'] = False
+				telemetry['error'] = error_msg
 		except Exception as e:
-			logger.error(f"Failed to create identity profile: {e}", __name__)
+			error_msg = f"Failed to create identity profile: {str(e)}"
+			logger.error(error_msg, __name__)
+			import traceback
+			logger.error(traceback.format_exc(), __name__)
 			telemetry['profile_saved'] = False
+			telemetry['error'] = error_msg
 
 		# Record Face Set usage if training from Face Set
 		if face_set_id:
 			face_set_manager.record_training_use(face_set_id, model_name, epochs)
 			logger.info(f"Recorded training use for Face Set {face_set_id}", __name__)
 
+		# Final status message
 		telemetry['status'] = 'Complete'
 		telemetry['model_path'] = final_model_path
-		yield [f"✅ Identity Model '{model_name}' trained successfully!", telemetry]
+
+		if telemetry.get('profile_saved'):
+			final_message = f"✅ Identity Model '{model_name}' trained successfully! Profile created with {telemetry['embedding_count']} embeddings."
+		else:
+			final_message = f"⚠️ Identity Model '{model_name}' trained, but profile creation failed. {telemetry.get('error', 'Unknown error')}"
+
+		yield [final_message, telemetry]
 
 	except Exception as e:
 		logger.error(f"Identity training failed: {e}", __name__)
