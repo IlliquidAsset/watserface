@@ -142,8 +142,17 @@ def train_lora_model(
 	model.train()
 	start_time = time.time()
 
+	# Initialize variables used in exception/finally blocks
+	avg_loss = 0.0
+	epoch = start_epoch
+
 	try:
-		for epoch in progress.tqdm(range(start_epoch, epochs), desc=f"Training LoRA (rank={lora_rank})"):
+		# Handle progress being None (when called from UI wrapper)
+		epoch_iterator = range(start_epoch, epochs)
+		if progress is not None:
+			epoch_iterator = progress.tqdm(epoch_iterator, desc=f"Training LoRA (rank={lora_rank})")
+
+		for epoch in epoch_iterator:
 			epoch_loss = 0
 			batch_count = 0
 
