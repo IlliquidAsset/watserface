@@ -64,6 +64,23 @@ def wrapped_start_lora_training(
 		if not existing_lora_name:
 			yield "❌ Error: Please select an existing LoRA model to continue training", None
 			return
+
+		# Check if rank changed - prevents incompatible checkpoint loading
+		checkpoint_path = os.path.join('.jobs/training_dataset_lora', f"{existing_lora_name}_lora.pth")
+		if not os.path.exists(checkpoint_path):
+			checkpoint_path = os.path.join('.assets/models/trained', f"{existing_lora_name}_lora.pth")
+
+		if os.path.exists(checkpoint_path):
+			try:
+				checkpoint = torch.load(checkpoint_path, map_location='cpu')
+				if isinstance(checkpoint, dict):
+					saved_rank = checkpoint.get('lora_rank', None)
+					if saved_rank and saved_rank != lora_rank:
+						yield f"❌ Error: Rank mismatch! Checkpoint has rank {saved_rank}, you selected rank {lora_rank}.\n\nChanging LoRA rank creates a new architecture - you cannot continue training.\n\nOptions:\n1. Keep rank {saved_rank} to continue training {existing_lora_name}\n2. Use rank {lora_rank} with a NEW model name (e.g., '{existing_lora_name}_rank{lora_rank}')", None
+						return
+			except:
+				pass  # If can't load checkpoint, proceed anyway
+
 		model_name = existing_lora_name  # Use existing LoRA name
 
 	# Validation

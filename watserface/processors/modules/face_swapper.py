@@ -412,6 +412,10 @@ def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 	logger.info(f"DEBUG: Scanned trained models: {trained_model_file_paths}", __name__)
 	if trained_model_file_paths:
 		for model_file_path in trained_model_file_paths:
+			# Only process ONNX files
+			if not model_file_path.endswith('.onnx'):
+				continue
+
 			model_name = get_file_name(model_file_path)
 			# Only include LoRA models (with _lora suffix), exclude identity models
 			if '_lora' in model_name:
