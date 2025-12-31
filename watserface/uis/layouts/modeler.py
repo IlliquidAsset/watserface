@@ -144,7 +144,7 @@ def render() -> gradio.Blocks:
 	with gradio.Blocks() as layout:
 		about.render()
 
-		gradio.Markdown("## 🎯 Paired Identity Training (Modeler)")
+		gradio.Markdown("## 🎯 Step 3: LoRA Paired Training (Modeler)")
 		gradio.Markdown(
 			"""
 			Train a custom LoRA model that maps a **source identity** to a **target scene/person**.

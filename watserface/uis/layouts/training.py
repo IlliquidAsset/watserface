@@ -196,8 +196,8 @@ def render() -> gradio.Blocks:
         
         with gradio.Tabs():
             # === Identity Training Tab ===
-            with gradio.Tab("Identity Training"):
-                gradio.Markdown("### 👤 Train Identity Model")
+            with gradio.Tab("Step 1 & 2: Identities"):
+                gradio.Markdown("### 👤 Face Set Extraction & Identity Training")
                 
                 with gradio.Row():
                     # Config Column
