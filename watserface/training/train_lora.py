@@ -85,16 +85,10 @@ def train_lora_model(
 	base_model = IdentityGenerator().to(device)
 	logger.info("[LoRA] Base model loaded (will be frozen)", __name__)
 
-	# Add LoRA layers
-	target_modules = ['enc.0', 'enc.2', 'res_blocks.0.conv.0', 'res_blocks.0.conv.2',
-	                  'res_blocks.1.conv.0', 'res_blocks.1.conv.2',
-	                  'res_blocks.2.conv.0', 'res_blocks.2.conv.2',
-	                  'res_blocks.3.conv.0', 'res_blocks.3.conv.2',
-	                  'dec.1', 'dec.4']
-
+	# Add LoRA layers (auto-detect all Conv2d and Linear layers)
 	model = LoRAWrapper.add_lora_to_model(
 		base_model,
-		target_modules=target_modules,
+		target_modules=None,  # Auto-detect Conv2d and Linear layers
 		rank=lora_rank,
 		alpha=float(lora_rank),  # Typically alpha = rank
 		dropout=0.1
