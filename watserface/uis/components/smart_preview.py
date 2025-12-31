@@ -161,26 +161,44 @@ def listen() -> None:
     )
     
     # Handle preview generation
-    def generate_previews() -> Tuple[Any, str]:
+    def generate_previews() -> Tuple[Any, Any, Any, Any, str]:
         """Generate preview options with different presets"""
         try:
+            from watserface.uis.components.preview import update_preview_image
+
             # Check if source and target are available
             source_component = get_ui_component('source_image')
             target_component = get_ui_component('target_image')
             
             if not (source_component and target_component):
-                return gradio.update(visible=False), "Please upload source and target images first"
+                return gradio.update(visible=False), None, None, None, "Please upload source and target images first"
+
+            # Generate previews for each preset
+            # Note: This is sequential to avoid thread contention on heavy models
+
+            # Fast
+            PresetManager.apply_preset('fast')
+            fast_image = update_preview_image(0)
             
-            # TODO: Implement actual preview generation
-            # For now, return placeholder status
-            return gradio.update(visible=True), "Preview generation started... (Implementation in progress)"
+            # Balanced
+            PresetManager.apply_preset('balanced')
+            balanced_image = update_preview_image(0)
+
+            # Quality
+            PresetManager.apply_preset('quality')
+            quality_image = update_preview_image(0)
+
+            # Reset to balanced as default
+            PresetManager.apply_preset('balanced')
+
+            return gradio.update(visible=True), fast_image, balanced_image, quality_image, "✅ Generated 3 preset options. Click 'Select' to choose one."
             
         except Exception as e:
-            return gradio.update(visible=False), f"Error generating previews: {str(e)}"
+            return gradio.update(visible=False), None, None, None, f"Error generating previews: {str(e)}"
     
     generate_button.click(
         fn=generate_previews,
-        outputs=[preview_results, preview_status]
+        outputs=[preview_results, preview_fast, preview_balanced, preview_quality, preview_status]
     )
     
     # Handle preset selection from preview buttons

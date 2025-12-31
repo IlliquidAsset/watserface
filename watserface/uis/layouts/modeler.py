@@ -128,8 +128,8 @@ def wrapped_start_lora_training(
 
 def wrapped_stop_training():
 	"""Wrapper to format stop training output"""
-	# TODO: Implement training stop mechanism
-	return "🚧 Training stop not yet implemented"
+	from watserface.training import core as training_core
+	return training_core.stop_training()
 
 
 def pre_check() -> bool:
