@@ -122,6 +122,7 @@ def train_lora_model(
 			shutil.copy(assets_checkpoint, checkpoint_path)
 
 	# Load checkpoint if exists
+	loss_history = []
 	if os.path.exists(checkpoint_path):
 		logger.info(f"📂 Resuming from checkpoint: {checkpoint_path}", __name__)
 		try:
@@ -131,7 +132,8 @@ def train_lora_model(
 				if 'optimizer_state_dict' in checkpoint:
 					optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 				start_epoch = checkpoint.get('epoch', 0)
-				logger.info(f"✅ Resumed from epoch {start_epoch}", __name__)
+				loss_history = checkpoint.get('loss_history', [])
+				logger.info(f"✅ Resumed from epoch {start_epoch} with {len(loss_history)} historical loss points", __name__)
 			else:
 				logger.warn("Checkpoint format not recognized, starting fresh", __name__)
 		except Exception as e:
@@ -179,6 +181,9 @@ def train_lora_model(
 
 			avg_loss = epoch_loss / batch_count
 
+			# Track loss history
+			loss_history.append({'epoch': epoch + 1, 'loss': avg_loss})
+
 			# Telemetry
 			elapsed = time.time() - start_time
 			completed_epochs = (epoch - start_epoch) + 1
@@ -195,7 +200,8 @@ def train_lora_model(
 				'trainable_params': trainable,
 				'frames_used': len(dataset),
 				'batch_size': batch_size,
-				'device': str(device)
+				'device': str(device),
+				'loss_history': loss_history  # Include full history in telemetry
 			}
 
 			# Log to terminal every 10% or last epoch
@@ -213,7 +219,8 @@ def train_lora_model(
 					'optimizer_state_dict': optimizer.state_dict(),
 					'loss': avg_loss,
 					'lora_rank': lora_rank,
-					'source_profile_id': source_profile_id
+					'source_profile_id': source_profile_id,
+					'loss_history': loss_history  # Save full history in checkpoint
 				}
 				torch.save(checkpoint_state, checkpoint_path)
 				logger.info(f"💾 LoRA checkpoint saved at epoch {epoch + 1}", __name__)
@@ -228,7 +235,8 @@ def train_lora_model(
 			'optimizer_state_dict': optimizer.state_dict(),
 			'loss': avg_loss,
 			'lora_rank': lora_rank,
-			'source_profile_id': source_profile_id
+			'source_profile_id': source_profile_id,
+			'loss_history': loss_history
 		}
 		torch.save(checkpoint_state, checkpoint_path)
 		logger.info(f"💾 LoRA checkpoint saved at epoch {epoch + 1}", __name__)
@@ -241,7 +249,8 @@ def train_lora_model(
 			'optimizer_state_dict': optimizer.state_dict(),
 			'loss': avg_loss,
 			'lora_rank': lora_rank,
-			'source_profile_id': source_profile_id
+			'source_profile_id': source_profile_id,
+			'loss_history': loss_history
 		}
 		torch.save(checkpoint_state, checkpoint_path)
 		logger.info(f"💾 Final LoRA checkpoint saved", __name__)

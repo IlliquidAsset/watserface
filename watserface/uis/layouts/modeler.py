@@ -3,6 +3,7 @@ Modeler Tab Layout - Paired Identity Training
 """
 from typing import Optional, Any
 import gradio
+import torch
 
 from watserface import state_manager, logger
 from watserface.uis.components import about, footer, modeler_source, modeler_target, modeler_options, terminal, lora_loader
@@ -131,7 +132,7 @@ def wrapped_start_lora_training(
 
 	last_update = 0
 	last_status = None
-	loss_history = []
+	last_plot = None
 
 	for status_data in train_lora_model(
 		dataset_dir=dataset_path,
@@ -185,11 +186,10 @@ Trainable Parameters: {trainable:,}
 
 {message}"""
 
-			# Track loss for graphing
-			if loss != 'N/A':
+			# Track loss for graphing (use history from telemetry)
+			if telemetry.get('loss_history'):
 				try:
-					loss_history.append({'epoch': int(epoch), 'loss': float(loss)})
-					plot_update = pd.DataFrame(loss_history)
+					plot_update = pd.DataFrame(telemetry['loss_history'])
 				except:
 					plot_update = None
 			else:
@@ -204,11 +204,12 @@ Trainable Parameters: {trainable:,}
 		if current_time - last_update >= 0.5 or formatted_status != last_status:
 			last_update = current_time
 			last_status = formatted_status
+			last_plot = plot_update
 			yield formatted_status, plot_update, overall_progress_str, epoch_progress_str
 
 	# Always yield the final status
 	if last_status:
-		yield last_status, pd.DataFrame(loss_history) if loss_history else None, "Complete!", "Complete!"
+		yield last_status, last_plot, "Complete!", "Complete!"
 
 
 def wrapped_stop_training():
