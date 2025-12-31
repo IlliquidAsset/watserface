@@ -14,8 +14,8 @@ START_MODELER_BUTTON: Optional[gradio.Button] = None
 STOP_MODELER_BUTTON: Optional[gradio.Button] = None
 MODELER_STATUS: Optional[gradio.Textbox] = None
 MODELER_LOSS_PLOT: Optional[gradio.LinePlot] = None
-MODELER_OVERALL_PROGRESS: Optional[gradio.Textbox] = None
-MODELER_EPOCH_PROGRESS: Optional[gradio.Textbox] = None
+MODELER_OVERALL_PROGRESS: Optional[gradio.Slider] = None
+MODELER_EPOCH_PROGRESS: Optional[gradio.Slider] = None
 
 
 def format_training_status(status_data: Any) -> str:
@@ -111,24 +111,24 @@ def wrapped_start_lora_training(
 	existing_frames = len([f for f in os.listdir(dataset_path) if f.endswith('.png')]) if os.path.exists(dataset_path) else 0
 
 	if existing_frames > 0:
-		yield f"📂 Using {existing_frames} existing frames. Skipping extraction...", None, "Preparing...", "Preparing..."
+		yield f"📂 Using {existing_frames} existing frames. Skipping extraction...", None, 0, 0
 	else:
 		# Step 1: Extract frames from target
-		yield "📹 Extracting frames from target video...", None, "Extracting...", "Extracting..."
+		yield "📹 Extracting frames from target video...", None, 0, 0
 		for stats in extract_training_dataset(
 			source_paths=[target_path],
 			output_dir=dataset_path,
 			frame_interval=2,
 			max_frames=1000
 		):
-			yield f"Extracting... {stats.get('frames_extracted', 0)} frames", None, "Extracting...", "Extracting..."
+			yield f"Extracting... {stats.get('frames_extracted', 0)} frames", None, 0, 0
 
 		# Step 2: Apply smoothing
-		yield "🎨 Applying landmark smoothing...", None, "Smoothing...", "Smoothing..."
+		yield "🎨 Applying landmark smoothing...", None, 0, 0
 		apply_smoothing_to_dataset(dataset_path)
 
 	# Step 3: Train LoRA model
-	yield "🚀 Starting LoRA training...", None, "Starting...", "Starting..."
+	yield "🚀 Starting LoRA training...", None, 0, 0
 
 	last_update = 0
 	last_status = None
@@ -162,18 +162,16 @@ def wrapped_start_lora_training(
 			frames_used = telemetry.get('frames_used', 0)
 			batch_size_actual = telemetry.get('batch_size', batch_size)
 
-			# Calculate progress
+			# Calculate progress percentages for sliders
 			try:
 				epoch_num = int(epoch)
 				total_epochs_num = int(total_epochs)
 				overall_pct = (epoch_num / total_epochs_num * 100) if total_epochs_num > 0 else 0
-				overall_progress_str = f"{epoch_num}/{total_epochs_num} epochs ({overall_pct:.1f}%)"
 			except:
-				overall_progress_str = f"{epoch}/{total_epochs} epochs"
+				overall_pct = 0
 
-			# Epoch progress (batches)
-			batches_per_epoch = (frames_used // batch_size_actual) if batch_size_actual > 0 else 0
-			epoch_progress_str = f"Batch progress tracked per epoch ({batches_per_epoch} batches/epoch)"
+			# Epoch progress - we only get updates at epoch completion, so show 50% mid-epoch
+			epoch_pct = 50.0
 
 			formatted_status = f"""📊 LoRA Training Progress
 
@@ -197,19 +195,19 @@ Trainable Parameters: {trainable:,}
 		else:
 			formatted_status = message
 			plot_update = None
-			overall_progress_str = "Initializing..."
-			epoch_progress_str = "Waiting..."
+			overall_pct = 0
+			epoch_pct = 0
 
 		# Throttle UI updates to avoid flickering (every 0.5s)
 		if current_time - last_update >= 0.5 or formatted_status != last_status:
 			last_update = current_time
 			last_status = formatted_status
 			last_plot = plot_update
-			yield formatted_status, plot_update, overall_progress_str, epoch_progress_str
+			yield formatted_status, plot_update, overall_pct, epoch_pct
 
 	# Always yield the final status
 	if last_status:
-		yield last_status, last_plot, "Complete!", "Complete!"
+		yield last_status, last_plot, 100, 100  # 100% complete
 
 
 def wrapped_stop_training():
@@ -317,19 +315,24 @@ def render() -> gradio.Blocks:
 		# Progress Bars
 		with gradio.Row():
 			with gradio.Column(scale=1):
-				MODELER_OVERALL_PROGRESS = gradio.Textbox(
-					label="⏱️ Overall Progress",
-					value="0/0 epochs (0%)",
+				gradio.Markdown("### Progress")
+				MODELER_OVERALL_PROGRESS = gradio.Slider(
+					label="⏱️ Overall Progress (Epochs)",
+					minimum=0,
+					maximum=100,
+					value=0,
 					interactive=False,
-					lines=1,
-					elem_id="modeler_overall_progress"
+					elem_id="modeler_overall_progress",
+					show_label=True
 				)
-				MODELER_EPOCH_PROGRESS = gradio.Textbox(
-					label="📊 Current Epoch Progress",
-					value="0/0 batches",
+				MODELER_EPOCH_PROGRESS = gradio.Slider(
+					label="📊 Current Epoch Batch Progress",
+					minimum=0,
+					maximum=100,
+					value=0,
 					interactive=False,
-					lines=1,
-					elem_id="modeler_epoch_progress"
+					elem_id="modeler_epoch_progress",
+					show_label=True
 				)
 
 			MODELER_LOSS_PLOT = gradio.LinePlot(

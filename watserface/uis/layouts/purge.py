@@ -40,6 +40,20 @@ DATASET_SELECT_NONE_BUTTON: Optional[gradio.Button] = None
 DATASET_DELETE_BUTTON: Optional[gradio.Button] = None
 DATASET_SECTION_SIZE: Optional[gradio.Markdown] = None
 
+# Face Sets Section
+FACESET_DATAFRAME: Optional[gradio.Dataframe] = None
+FACESET_SELECT_ALL_BUTTON: Optional[gradio.Button] = None
+FACESET_SELECT_NONE_BUTTON: Optional[gradio.Button] = None
+FACESET_DELETE_BUTTON: Optional[gradio.Button] = None
+FACESET_SECTION_SIZE: Optional[gradio.Markdown] = None
+
+# Downloaded Models Section
+DOWNLOADED_MODELS_DATAFRAME: Optional[gradio.Dataframe] = None
+DOWNLOADED_SELECT_ALL_BUTTON: Optional[gradio.Button] = None
+DOWNLOADED_SELECT_NONE_BUTTON: Optional[gradio.Button] = None
+DOWNLOADED_DELETE_BUTTON: Optional[gradio.Button] = None
+DOWNLOADED_SECTION_SIZE: Optional[gradio.Markdown] = None
+
 
 def get_directory_size(path: str) -> int:
 	"""Calculate total size of directory in bytes"""
@@ -230,6 +244,116 @@ def scan_training_datasets() -> tuple[List[List[Any]], str]:
 		])
 
 	section_info = f"**Training Datasets**: {len(data)} items ({format_size(total_size)})"
+	return (data, section_info)
+
+
+def scan_face_sets() -> tuple[List[List[Any]], str]:
+	"""Scan face sets directories"""
+	face_sets_dir = 'models/face_sets'
+	if not os.path.exists(face_sets_dir):
+		return ([], "**Face Sets**: 0 items (0 B)")
+
+	data = []
+	total_size = 0
+
+	for item in os.listdir(face_sets_dir):
+		item_path = os.path.join(face_sets_dir, item)
+		if not os.path.isdir(item_path):
+			continue
+
+		# Load metadata
+		metadata_path = os.path.join(item_path, 'faceset.json')
+		name = item
+		created = "Unknown"
+		frames = 0
+
+		if os.path.exists(metadata_path):
+			try:
+				with open(metadata_path, 'r') as f:
+					metadata = json.load(f)
+					name = metadata.get('name', item)
+					created = metadata.get('created_at', 'Unknown')
+					frames = metadata.get('frame_count', 0)
+			except:
+				pass
+
+		# Calculate size
+		size = get_directory_size(item_path)
+		total_size += size
+
+		data.append([
+			False,  # Selected checkbox
+			name,
+			item,
+			f"{frames} frames",
+			created,
+			format_size(size),
+			item_path
+		])
+
+	section_info = f"**Face Sets**: {len(data)} items ({format_size(total_size)})"
+	return (data, section_info)
+
+
+def scan_downloaded_models() -> tuple[List[List[Any]], str]:
+	"""Scan downloaded models in .assets/models"""
+	models_dir = '.assets/models'
+	if not os.path.exists(models_dir):
+		return ([], "**Downloaded Models**: 0 items (0 B)")
+
+	data = []
+	total_size = 0
+
+	# Exclude trained/ subdirectory
+	for filename in os.listdir(models_dir):
+		file_path = os.path.join(models_dir, filename)
+
+		# Skip directories and trained models
+		if os.path.isdir(file_path):
+			if filename == 'trained':
+				continue
+			# Skip subdirectories like iperov
+			size = get_directory_size(file_path)
+			total_size += size
+			data.append([
+				False,
+				filename + '/',
+				'Directory',
+				format_size(size),
+				file_path
+			])
+			continue
+
+		# Only process .onnx files
+		if not filename.endswith('.onnx'):
+			continue
+
+		# Calculate size
+		size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+
+		# Also include .data file if exists
+		data_file = file_path + '.data'
+		if os.path.exists(data_file):
+			size += os.path.getsize(data_file)
+
+		# Include hash file if exists
+		hash_file = os.path.splitext(file_path)[0] + '.hash'
+		if os.path.exists(hash_file):
+			size += os.path.getsize(hash_file)
+
+		total_size += size
+
+		model_name = filename.replace('.onnx', '')
+
+		data.append([
+			False,  # Selected checkbox
+			model_name,
+			'Downloaded',
+			format_size(size),
+			file_path
+		])
+
+	section_info = f"**Downloaded Models**: {len(data)} items ({format_size(total_size)})"
 	return (data, section_info)
 
 
