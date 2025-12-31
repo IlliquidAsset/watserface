@@ -63,4 +63,4 @@ echo "Deployment setup complete."
 
 # Launch the application
 echo "Launching FaceFusion on port 8081..."
-exec python facefusion.py run --server-port 8081
+exec python watserface.py run --server-port 8081
