@@ -362,20 +362,17 @@ def refresh_all_data() -> tuple:
 	identity_data, identity_size = scan_identity_profiles()
 	lora_data, lora_size = scan_lora_models()
 	dataset_data, dataset_size = scan_training_datasets()
-
-	# Calculate total size
-	total = 0
-	for row in identity_data:
-		# Parse size from formatted string (e.g., "1.23 MB")
-		size_str = row[4]  # Size column
-		# This is approximate - we already have the total from scan functions
+	faceset_data, faceset_size = scan_face_sets()
+	downloaded_data, downloaded_size = scan_downloaded_models()
 
 	# Recalculate properly
 	identity_total = get_directory_size('models/identities')
 	lora_total = get_directory_size('.assets/models/trained') + get_directory_size('.jobs/training_dataset_lora')
-	dataset_total = sum([get_directory_size(row[5]) for row in dataset_data])
+	dataset_total = sum([get_directory_size(row[5]) for row in dataset_data]) if dataset_data else 0
+	faceset_total = get_directory_size('models/face_sets')
+	downloaded_total = get_directory_size('.assets/models') - get_directory_size('.assets/models/trained')
 
-	total = identity_total + lora_total + dataset_total
+	total = identity_total + lora_total + dataset_total + faceset_total + downloaded_total
 	total_info = f"## Total Storage Used: {format_size(total)}"
 
 	return (
@@ -385,6 +382,10 @@ def refresh_all_data() -> tuple:
 		lora_size,
 		gradio.Dataframe(value=dataset_data),
 		dataset_size,
+		gradio.Dataframe(value=faceset_data),
+		faceset_size,
+		gradio.Dataframe(value=downloaded_data),
+		downloaded_size,
 		total_info
 	)
 
@@ -545,6 +546,118 @@ def delete_selected_datasets(current_data):
 	return (message, *refresh_all_data())
 
 
+def select_all_facesets(current_data):
+	"""Select all face sets"""
+	if not current_data:
+		return current_data
+	new_data = []
+	for row in current_data:
+		new_row = row.copy()
+		new_row[0] = True
+		new_data.append(new_row)
+	return new_data
+
+
+def select_none_facesets(current_data):
+	"""Deselect all face sets"""
+	if not current_data:
+		return current_data
+	new_data = []
+	for row in current_data:
+		new_row = row.copy()
+		new_row[0] = False
+		new_data.append(new_row)
+	return new_data
+
+
+def delete_selected_facesets(current_data):
+	"""Delete selected face sets"""
+	if not current_data:
+		return "No items to delete", *refresh_all_data()
+
+	deleted_count = 0
+	errors = []
+
+	for row in current_data:
+		if row[0]:  # If selected
+			faceset_path = row[6]  # Path column
+			try:
+				if os.path.exists(faceset_path):
+					shutil.rmtree(faceset_path)
+					deleted_count += 1
+					logger.info(f"Deleted face set: {faceset_path}", __name__)
+			except Exception as e:
+				errors.append(f"Failed to delete {row[1]}: {str(e)}")
+
+	message = f"✅ Deleted {deleted_count} face set(s)"
+	if errors:
+		message += f"\n\n❌ Errors:\n" + "\n".join(errors)
+
+	return (message, *refresh_all_data())
+
+
+def select_all_downloaded(current_data):
+	"""Select all downloaded models"""
+	if not current_data:
+		return current_data
+	new_data = []
+	for row in current_data:
+		new_row = row.copy()
+		new_row[0] = True
+		new_data.append(new_row)
+	return new_data
+
+
+def select_none_downloaded(current_data):
+	"""Deselect all downloaded models"""
+	if not current_data:
+		return current_data
+	new_data = []
+	for row in current_data:
+		new_row = row.copy()
+		new_row[0] = False
+		new_data.append(new_row)
+	return new_data
+
+
+def delete_selected_downloaded(current_data):
+	"""Delete selected downloaded models"""
+	if not current_data:
+		return "No items to delete", *refresh_all_data()
+
+	deleted_count = 0
+	errors = []
+
+	for row in current_data:
+		if row[0]:  # If selected
+			model_path = row[4]  # Path column
+
+			# Delete the file or directory
+			try:
+				if os.path.exists(model_path):
+					if os.path.isdir(model_path):
+						shutil.rmtree(model_path)
+					else:
+						# Delete .onnx, .onnx.data, and .hash files
+						os.remove(model_path)
+						data_file = model_path + '.data'
+						if os.path.exists(data_file):
+							os.remove(data_file)
+						hash_file = os.path.splitext(model_path)[0] + '.hash'
+						if os.path.exists(hash_file):
+							os.remove(hash_file)
+					deleted_count += 1
+					logger.info(f"Deleted: {model_path}", __name__)
+			except Exception as e:
+				errors.append(f"Failed to delete {row[1]}: {str(e)}")
+
+	message = f"✅ Deleted {deleted_count} downloaded model(s)"
+	if errors:
+		message += f"\n\n❌ Errors:\n" + "\n".join(errors)
+
+	return (message, *refresh_all_data())
+
+
 def pre_check() -> bool:
 	"""Pre-check for purge tab"""
 	return True
@@ -559,17 +672,25 @@ def render() -> gradio.Blocks:
 	global LORA_DELETE_BUTTON, LORA_SECTION_SIZE
 	global DATASET_DATAFRAME, DATASET_SELECT_ALL_BUTTON, DATASET_SELECT_NONE_BUTTON
 	global DATASET_DELETE_BUTTON, DATASET_SECTION_SIZE
+	global FACESET_DATAFRAME, FACESET_SELECT_ALL_BUTTON, FACESET_SELECT_NONE_BUTTON
+	global FACESET_DELETE_BUTTON, FACESET_SECTION_SIZE
+	global DOWNLOADED_MODELS_DATAFRAME, DOWNLOADED_SELECT_ALL_BUTTON, DOWNLOADED_SELECT_NONE_BUTTON
+	global DOWNLOADED_DELETE_BUTTON, DOWNLOADED_SECTION_SIZE
 
 	# Initial data
 	identity_data, identity_size_str = scan_identity_profiles()
 	lora_data, lora_size_str = scan_lora_models()
 	dataset_data, dataset_size_str = scan_training_datasets()
+	faceset_data, faceset_size_str = scan_face_sets()
+	downloaded_data, downloaded_size_str = scan_downloaded_models()
 
 	# Calculate total
 	identity_total = get_directory_size('models/identities')
 	lora_total = get_directory_size('.assets/models/trained') + get_directory_size('.jobs/training_dataset_lora')
-	dataset_total = sum([get_directory_size(row[5]) for row in dataset_data])
-	total = identity_total + lora_total + dataset_total
+	dataset_total = sum([get_directory_size(row[5]) for row in dataset_data]) if dataset_data else 0
+	faceset_total = get_directory_size('models/face_sets')
+	downloaded_total = get_directory_size('.assets/models') - get_directory_size('.assets/models/trained')
+	total = identity_total + lora_total + dataset_total + faceset_total + downloaded_total
 
 	with gradio.Blocks() as layout:
 		about.render()
@@ -634,6 +755,42 @@ def render() -> gradio.Blocks:
 				DATASET_SELECT_NONE_BUTTON = gradio.Button("Select None", size="sm")
 				DATASET_DELETE_BUTTON = gradio.Button("🗑️ Delete Selected", variant="stop", size="sm")
 
+		# Face Sets Section
+		with gradio.Accordion("🎞️ Face Sets (Extracted Frames)", open=True):
+			FACESET_SECTION_SIZE = gradio.Markdown(faceset_size_str)
+
+			FACESET_DATAFRAME = gradio.Dataframe(
+				value=faceset_data,
+				headers=["Select", "Name", "ID", "Frames", "Created", "Size", "Path"],
+				datatype=["bool", "str", "str", "str", "str", "str", "str"],
+				col_count=(7, "fixed"),
+				interactive=True,
+				wrap=True
+			)
+
+			with gradio.Row():
+				FACESET_SELECT_ALL_BUTTON = gradio.Button("Select All", size="sm")
+				FACESET_SELECT_NONE_BUTTON = gradio.Button("Select None", size="sm")
+				FACESET_DELETE_BUTTON = gradio.Button("🗑️ Delete Selected", variant="stop", size="sm")
+
+		# Downloaded Models Section
+		with gradio.Accordion("📥 Downloaded Models (Base Models)", open=True):
+			DOWNLOADED_SECTION_SIZE = gradio.Markdown(downloaded_size_str)
+
+			DOWNLOADED_MODELS_DATAFRAME = gradio.Dataframe(
+				value=downloaded_data,
+				headers=["Select", "Name", "Type", "Size", "Path"],
+				datatype=["bool", "str", "str", "str", "str"],
+				col_count=(5, "fixed"),
+				interactive=True,
+				wrap=True
+			)
+
+			with gradio.Row():
+				DOWNLOADED_SELECT_ALL_BUTTON = gradio.Button("Select All", size="sm")
+				DOWNLOADED_SELECT_NONE_BUTTON = gradio.Button("Select None", size="sm")
+				DOWNLOADED_DELETE_BUTTON = gradio.Button("🗑️ Delete Selected", variant="stop", size="sm")
+
 		# Status output
 		status_output = gradio.Textbox(label="Status", value="", visible=False)
 
@@ -651,6 +808,8 @@ def listen() -> None:
 			IDENTITY_PROFILES_DATAFRAME, IDENTITY_SECTION_SIZE,
 			LORA_DATAFRAME, LORA_SECTION_SIZE,
 			DATASET_DATAFRAME, DATASET_SECTION_SIZE,
+			FACESET_DATAFRAME, FACESET_SECTION_SIZE,
+			DOWNLOADED_MODELS_DATAFRAME, DOWNLOADED_SECTION_SIZE,
 			PURGE_TOTAL_SIZE
 		]
 	)
@@ -676,6 +835,8 @@ def listen() -> None:
 			IDENTITY_PROFILES_DATAFRAME, IDENTITY_SECTION_SIZE,
 			LORA_DATAFRAME, LORA_SECTION_SIZE,
 			DATASET_DATAFRAME, DATASET_SECTION_SIZE,
+			FACESET_DATAFRAME, FACESET_SECTION_SIZE,
+			DOWNLOADED_MODELS_DATAFRAME, DOWNLOADED_SECTION_SIZE,
 			PURGE_TOTAL_SIZE
 		]
 	)
@@ -701,6 +862,8 @@ def listen() -> None:
 			IDENTITY_PROFILES_DATAFRAME, IDENTITY_SECTION_SIZE,
 			LORA_DATAFRAME, LORA_SECTION_SIZE,
 			DATASET_DATAFRAME, DATASET_SECTION_SIZE,
+			FACESET_DATAFRAME, FACESET_SECTION_SIZE,
+			DOWNLOADED_MODELS_DATAFRAME, DOWNLOADED_SECTION_SIZE,
 			PURGE_TOTAL_SIZE
 		]
 	)
@@ -726,6 +889,62 @@ def listen() -> None:
 			IDENTITY_PROFILES_DATAFRAME, IDENTITY_SECTION_SIZE,
 			LORA_DATAFRAME, LORA_SECTION_SIZE,
 			DATASET_DATAFRAME, DATASET_SECTION_SIZE,
+			FACESET_DATAFRAME, FACESET_SECTION_SIZE,
+			DOWNLOADED_MODELS_DATAFRAME, DOWNLOADED_SECTION_SIZE,
+			PURGE_TOTAL_SIZE
+		]
+	)
+
+	# Face set actions
+	FACESET_SELECT_ALL_BUTTON.click(
+		select_all_facesets,
+		inputs=[FACESET_DATAFRAME],
+		outputs=[FACESET_DATAFRAME]
+	)
+
+	FACESET_SELECT_NONE_BUTTON.click(
+		select_none_facesets,
+		inputs=[FACESET_DATAFRAME],
+		outputs=[FACESET_DATAFRAME]
+	)
+
+	FACESET_DELETE_BUTTON.click(
+		delete_selected_facesets,
+		inputs=[FACESET_DATAFRAME],
+		outputs=[
+			PURGE_TOTAL_SIZE,
+			IDENTITY_PROFILES_DATAFRAME, IDENTITY_SECTION_SIZE,
+			LORA_DATAFRAME, LORA_SECTION_SIZE,
+			DATASET_DATAFRAME, DATASET_SECTION_SIZE,
+			FACESET_DATAFRAME, FACESET_SECTION_SIZE,
+			DOWNLOADED_MODELS_DATAFRAME, DOWNLOADED_SECTION_SIZE,
+			PURGE_TOTAL_SIZE
+		]
+	)
+
+	# Downloaded model actions
+	DOWNLOADED_SELECT_ALL_BUTTON.click(
+		select_all_downloaded,
+		inputs=[DOWNLOADED_MODELS_DATAFRAME],
+		outputs=[DOWNLOADED_MODELS_DATAFRAME]
+	)
+
+	DOWNLOADED_SELECT_NONE_BUTTON.click(
+		select_none_downloaded,
+		inputs=[DOWNLOADED_MODELS_DATAFRAME],
+		outputs=[DOWNLOADED_MODELS_DATAFRAME]
+	)
+
+	DOWNLOADED_DELETE_BUTTON.click(
+		delete_selected_downloaded,
+		inputs=[DOWNLOADED_MODELS_DATAFRAME],
+		outputs=[
+			PURGE_TOTAL_SIZE,
+			IDENTITY_PROFILES_DATAFRAME, IDENTITY_SECTION_SIZE,
+			LORA_DATAFRAME, LORA_SECTION_SIZE,
+			DATASET_DATAFRAME, DATASET_SECTION_SIZE,
+			FACESET_DATAFRAME, FACESET_SECTION_SIZE,
+			DOWNLOADED_MODELS_DATAFRAME, DOWNLOADED_SECTION_SIZE,
 			PURGE_TOTAL_SIZE
 		]
 	)
