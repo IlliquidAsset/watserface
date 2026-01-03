@@ -2,16 +2,19 @@ import platform
 from typing import Any, Iterable, Optional, Reversible, Sequence
 
 
+_SYSTEM = platform.system().lower()
+
+
 def is_linux() -> bool:
-	return platform.system().lower() == 'linux'
+	return _SYSTEM == 'linux'
 
 
 def is_macos() -> bool:
-	return platform.system().lower() == 'darwin'
+	return _SYSTEM == 'darwin'
 
 
 def is_windows() -> bool:
-	return platform.system().lower() == 'windows'
+	return _SYSTEM == 'windows'
 
 
 def create_int_metavar(int_range : Sequence[int]) -> str:
