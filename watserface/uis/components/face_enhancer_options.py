@@ -22,12 +22,14 @@ def render() -> None:
 	has_face_enhancer = 'face_enhancer' in state_manager.get_item('processors')
 	FACE_ENHANCER_MODEL_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.face_enhancer_model_dropdown'),
+		info = wording.get('help.face_enhancer_model'),
 		choices = processors_choices.face_enhancer_models,
 		value = state_manager.get_item('face_enhancer_model'),
 		visible = has_face_enhancer
 	)
 	FACE_ENHANCER_BLEND_SLIDER = gradio.Slider(
 		label = wording.get('uis.face_enhancer_blend_slider'),
+		info = wording.get('help.face_enhancer_blend'),
 		value = state_manager.get_item('face_enhancer_blend'),
 		step = calc_int_step(processors_choices.face_enhancer_blend_range),
 		minimum = processors_choices.face_enhancer_blend_range[0],
@@ -36,6 +38,7 @@ def render() -> None:
 	)
 	FACE_ENHANCER_WEIGHT_SLIDER = gradio.Slider(
 		label = wording.get('uis.face_enhancer_weight_slider'),
+		info = wording.get('help.face_enhancer_weight'),
 		value = state_manager.get_item('face_enhancer_weight'),
 		step = calc_float_step(processors_choices.face_enhancer_weight_range),
 		minimum = processors_choices.face_enhancer_weight_range[0],
