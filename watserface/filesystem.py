@@ -1,7 +1,8 @@
 import glob
 import os
 import shutil
-from typing import List, Optional
+from functools import lru_cache
+from typing import List, Optional, Set
 
 import watserface.choices
 
@@ -55,8 +56,23 @@ def is_file(file_path : str) -> bool:
 	return False
 
 
+@lru_cache(maxsize = None)
+def get_audio_formats() -> Set[str]:
+	return set(watserface.choices.audio_formats)
+
+
+@lru_cache(maxsize = None)
+def get_image_formats() -> Set[str]:
+	return set(watserface.choices.image_formats)
+
+
+@lru_cache(maxsize = None)
+def get_video_formats() -> Set[str]:
+	return set(watserface.choices.video_formats)
+
+
 def is_audio(audio_path : str) -> bool:
-	return is_file(audio_path) and get_file_format(audio_path) in watserface.choices.audio_formats
+	return is_file(audio_path) and get_file_format(audio_path) in get_audio_formats()
 
 
 def has_audio(audio_paths : List[str]) -> bool:
@@ -72,7 +88,7 @@ def are_audios(audio_paths : List[str]) -> bool:
 
 
 def is_image(image_path : str) -> bool:
-	return is_file(image_path) and get_file_format(image_path) in watserface.choices.image_formats
+	return is_file(image_path) and get_file_format(image_path) in get_image_formats()
 
 
 def has_image(image_paths : List[str]) -> bool:
@@ -88,7 +104,7 @@ def are_images(image_paths : List[str]) -> bool:
 
 
 def is_video(video_path : str) -> bool:
-	return is_file(video_path) and get_file_format(video_path) in watserface.choices.video_formats
+	return is_file(video_path) and get_file_format(video_path) in get_video_formats()
 
 
 def has_video(video_paths : List[str]) -> bool:
