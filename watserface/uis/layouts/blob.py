@@ -27,7 +27,7 @@ def render() -> gradio.Blocks:
     global BLOB_SOURCE, BLOB_TARGET, BLOB_MODE_SELECTOR, BLOB_ANALYZE_BTN, BLOB_PROCESS_BTN, BLOB_STATUS, BLOB_PREVIEW_HTML
     global BLOB_RESULT_VIDEO, BLOB_RESULT_IMAGE
 
-    with gradio.Blocks(css="watserface/uis/assets/blob_styles.css") as layout:
+    with gradio.Blocks(css="watserface/uis/assets/blob_styles.css", elem_id="blob_container") as layout:
 
         # Header
         with gradio.Row(elem_classes=["blob-header"]):

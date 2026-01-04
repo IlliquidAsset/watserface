@@ -13,12 +13,13 @@
     --blob-gradient: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
 }
 
-/* --- Global Overrides --- */
-body, .gradio-container {
+/* --- Scoped Overrides --- */
+#blob_container {
     background: var(--blob-gradient) !important;
     background-attachment: fixed !important;
     color: var(--text-primary) !important;
     font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
 }
 
 /* --- Glass Containers --- */

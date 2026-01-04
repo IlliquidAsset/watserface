@@ -4,7 +4,7 @@ import gradio
 import time
 
 from watserface import state_manager, logger, face_analyser, wording
-from watserface.filesystem import is_video, is_image, resolve_file_paths
+from watserface.filesystem import is_video, is_image, resolve_file_paths, has_audio
 from watserface.training import core as training_core
 from watserface.face_set import get_face_set_manager
 
@@ -109,6 +109,12 @@ class BlobOrchestrator:
 
         if is_video(target_path):
             yield self.log("🎥 Target is a video."), strategy
+
+            # Check for audio to enable lip sync
+            if has_audio(target_path):
+                if "lip_syncer" not in strategy["processors"]:
+                    strategy["processors"].append("lip_syncer")
+                yield self.log("🔊 Audio detected. Lip Syncer enabled for realism."), strategy
 
             if mode == "Quality":
                 strategy["needs_occlusion_training"] = True
@@ -229,7 +235,14 @@ class BlobOrchestrator:
         state_manager.set_item('target_path', t_path)
 
         # Generate Output Path
-        output_dir = state_manager.get_item('output_path') or "output"
+        current_output_path = state_manager.get_item('output_path')
+        if current_output_path and os.path.isdir(current_output_path):
+            output_dir = current_output_path
+        elif current_output_path and os.path.isfile(current_output_path):
+            output_dir = os.path.dirname(current_output_path)
+        else:
+            output_dir = "output"
+
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
 
