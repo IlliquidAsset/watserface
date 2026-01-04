@@ -202,8 +202,11 @@ def get_theme() -> gradio.Theme:
 def get_css() -> str:
 	overrides_css_path = resolve_relative_path('uis/assets/overrides.css')
 	enhanced_css_path = resolve_relative_path('uis/assets/enhanced_styles.css')
+	blob_css_path = resolve_relative_path('uis/assets/blob_styles.css')
 
 	css = open(overrides_css_path).read()
 	if os.path.exists(enhanced_css_path):
 		css += "\n" + open(enhanced_css_path).read()
+	if os.path.exists(blob_css_path):
+		css += "\n" + open(blob_css_path).read()
 	return css
