@@ -315,6 +315,13 @@ def train_lora_model(
 			final_model_path = os.path.join(trained_models_dir, f"{full_model_name}.onnx")
 			shutil.copy(output_path, final_model_path)
 
+			# Copy external data file if it exists (.onnx.data)
+			external_data_path = output_path + '.data'
+			if os.path.exists(external_data_path):
+				final_data_path = final_model_path + '.data'
+				shutil.copy(external_data_path, final_data_path)
+				logger.info(f"✅ External data file copied: {final_data_path}", __name__)
+
 			# Also copy the checkpoint
 			checkpoint_dst = os.path.join(trained_models_dir, f"{full_model_name}.pth")
 			if os.path.exists(checkpoint_path):

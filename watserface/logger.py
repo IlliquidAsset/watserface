@@ -6,7 +6,7 @@ from watserface.types import LogLevel
 
 
 def init(log_level : LogLevel) -> None:
-	basicConfig(format = '%(message)s')
+	basicConfig(format = '[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
 	get_package_logger().setLevel(watserface.choices.log_level_set.get(log_level))
 
 
@@ -36,11 +36,11 @@ def create_message(message : str, module_name : str) -> str:
 		message = "Unknown error"
 
 	module_names = module_name.split('.')
-	first_module_name = get_first(module_names)
 	last_module_name = get_last(module_names)
 
-	if first_module_name and last_module_name:
-		return '[' + first_module_name.upper() + '.' + last_module_name.upper() + '] ' + message
+	# Remove 'watserface.' prefix and just use the module name
+	if last_module_name:
+		return '[' + last_module_name.upper() + '] ' + message
 	return message
 
 
