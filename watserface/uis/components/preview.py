@@ -25,11 +25,20 @@ def get_source_face_for_preview() -> Optional[Face]:
 	"""Get source face from identity profile or source images"""
 	# First check for identity profile
 	profile_id = state_manager.get_item('identity_profile_id')
+	selected_profile = state_manager.get_item('selected_identity_profile')
+
+	logger.info(f'[GET_SOURCE_FACE] identity_profile_id={profile_id}, selected_identity_profile={selected_profile}', __name__)
+
+	# Try both state variables for profile ID
+	profile_id = profile_id or selected_profile
+
 	if profile_id:
+		logger.info(f'[GET_SOURCE_FACE] Loading identity profile: {profile_id}', __name__)
 		try:
 			manager = identity_profile.get_identity_manager()
 			profile = manager.source_intelligence.load_profile(profile_id)
 			if profile and profile.embedding_mean:
+				logger.info(f'[GET_SOURCE_FACE] ✓ Profile loaded: {profile.name}, embedding_dim={len(profile.embedding_mean)}', __name__)
 				embedding_mean = numpy.array(profile.embedding_mean, dtype=numpy.float64)
 				return Face(
 					bounding_box=None,
@@ -42,11 +51,17 @@ def get_source_face_for_preview() -> Optional[Face]:
 					age=None,
 					race=None
 				)
+			else:
+				logger.warn(f'[GET_SOURCE_FACE] ✗ Profile loaded but no embedding_mean: {profile}', __name__)
 		except Exception as e:
 			logger.error(f'Failed to load identity profile for preview: {e}', __name__)
+			import traceback
+			logger.error(f'Traceback: {traceback.format_exc()}', __name__)
 
 	# Fallback to source images
 	source_paths = state_manager.get_item('source_paths')
+	logger.info(f'[GET_SOURCE_FACE] Fallback to source images: {len(source_paths) if source_paths else 0} paths', __name__)
+
 	if source_paths:
 		source_frames = read_static_images(source_paths)
 		source_faces = []
@@ -55,8 +70,12 @@ def get_source_face_for_preview() -> Optional[Face]:
 			temp_faces = sort_faces_by_order(temp_faces, 'large-small')
 			if temp_faces:
 				source_faces.append(get_first(temp_faces))
-		return get_average_face(source_faces)
+		avg_face = get_average_face(source_faces)
+		if avg_face:
+			logger.info(f'[GET_SOURCE_FACE] ✓ Created average face from {len(source_faces)} images', __name__)
+		return avg_face
 
+	logger.warn('[GET_SOURCE_FACE] ✗ No source face available (no profile, no source images)', __name__)
 	return None
 
 PREVIEW_IMAGE : Optional[gradio.Image] = None
@@ -249,10 +268,26 @@ def update_preview_image(frame_number : int = 0) -> gradio.Image:
 	while process_manager.is_checking():
 		sleep(0.5)
 	try:
+		logger.info('=== PREVIEW UPDATE START ===', __name__)
+
 		conditional_append_reference_faces()
 		reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
-		source_face = get_source_face_for_preview()
+
+		# Get source face with detailed logging
+		logger.info('Getting source face for preview...', __name__)
+		use_identity = state_manager.get_item('use_identity_profile')
+		selected_profile = state_manager.get_item('selected_identity_profile')
 		source_paths = state_manager.get_item('source_paths') or []
+
+		logger.info(f'Source config: use_identity={use_identity}, profile={selected_profile}, source_paths={len(source_paths)} files', __name__)
+
+		source_face = get_source_face_for_preview()
+
+		if source_face:
+			logger.info(f'✓ Source face obtained: embedding shape={source_face.embedding.shape if source_face.embedding is not None else "None"}', __name__)
+		else:
+			logger.warn('✗ No source face obtained - preview will show original frame', __name__)
+
 		source_audio_path = get_first(filter_audio_paths(source_paths))
 		source_audio_frame = create_empty_audio_frame()
 
@@ -264,16 +299,26 @@ def update_preview_image(frame_number : int = 0) -> gradio.Image:
 			if numpy.any(temp_audio_frame):
 				source_audio_frame = temp_audio_frame
 
-		if is_image(state_manager.get_item('target_path')):
-			target_vision_frame = read_static_image(state_manager.get_item('target_path'))
+		target_path = state_manager.get_item('target_path')
+		processors = state_manager.get_item('processors') or []
+		face_swapper_model = state_manager.get_item('face_swapper_model')
+
+		logger.info(f'Target: {target_path}, Processors: {processors}, Model: {face_swapper_model}', __name__)
+
+		if is_image(target_path):
+			logger.info('Processing image target...', __name__)
+			target_vision_frame = read_static_image(target_path)
 			preview_vision_frame = process_preview_frame(reference_faces, source_face, source_audio_frame, target_vision_frame)
 			preview_vision_frame = normalize_frame_color(preview_vision_frame)
+			logger.info('✓ Preview image generated successfully', __name__)
 			return gradio.Image(value = preview_vision_frame, elem_classes = [ 'image-preview', 'is-' + detect_frame_orientation(preview_vision_frame) ])
 
-		if is_video(state_manager.get_item('target_path')):
-			temp_vision_frame = read_video_frame(state_manager.get_item('target_path'), frame_number)
+		if is_video(target_path):
+			logger.info(f'Processing video target frame {frame_number}...', __name__)
+			temp_vision_frame = read_video_frame(target_path, frame_number)
 			preview_vision_frame = process_preview_frame(reference_faces, source_face, source_audio_frame, temp_vision_frame)
 			preview_vision_frame = normalize_frame_color(preview_vision_frame)
+			logger.info('✓ Preview video frame generated successfully', __name__)
 			return gradio.Image(value = preview_vision_frame, elem_classes = [ 'image-preview', 'is-' + detect_frame_orientation(preview_vision_frame) ])
 	except AttributeError as error:
 		if "'NoneType' object has no attribute 'run'" in str(error):
@@ -282,7 +327,11 @@ def update_preview_image(frame_number : int = 0) -> gradio.Image:
 		raise error
 	except Exception as error:
 		logger.error(f'Preview generation failed: {error}', __name__)
+		import traceback
+		logger.error(f'Traceback: {traceback.format_exc()}', __name__)
 		return gradio.Image(value = None, elem_classes = None)
+
+	logger.warn('No valid target path - returning empty preview', __name__)
 	return gradio.Image(value = None, elem_classes = None)
 
 
@@ -296,12 +345,26 @@ def update_preview_frame_slider() -> gradio.Slider:
 def process_preview_frame(reference_faces : FaceSet, source_face : Face, source_audio_frame : AudioFrame, target_vision_frame : VisionFrame) -> VisionFrame:
 	target_vision_frame = restrict_frame(target_vision_frame, (1024, 1024))
 	source_vision_frame = target_vision_frame.copy()
+
+	logger.info(f'Processing preview frame: source_face={source_face is not None}, target_shape={target_vision_frame.shape}', __name__)
+
 	if analyse_frame(target_vision_frame):
+		logger.warn('Frame failed content analysis - returning blurred version', __name__)
 		return cv2.GaussianBlur(target_vision_frame, (99, 99), 0)
 
-	for processor_module in get_processors_modules(state_manager.get_item('processors')):
+	processors = state_manager.get_item('processors')
+	logger.info(f'Running processors: {processors}', __name__)
+
+	for processor_module in get_processors_modules(processors):
+		processor_name = processor_module.__name__.split('.')[-1]
+		logger.info(f'Processing with: {processor_name}', __name__)
+
 		logger.disable()
-		if processor_module.pre_process('preview'):
+		pre_check_result = processor_module.pre_process('preview')
+		logger.enable()
+
+		if pre_check_result:
+			logger.info(f'✓ {processor_name} pre-check passed, processing frame...', __name__)
 			target_vision_frame = processor_module.process_frame(
 			{
 				'reference_faces': reference_faces,
@@ -310,5 +373,8 @@ def process_preview_frame(reference_faces : FaceSet, source_face : Face, source_
 				'source_vision_frame': source_vision_frame,
 				'target_vision_frame': target_vision_frame
 			})
-		logger.enable()
+			logger.info(f'✓ {processor_name} completed', __name__)
+		else:
+			logger.warn(f'✗ {processor_name} pre-check failed, skipping', __name__)
+
 	return target_vision_frame

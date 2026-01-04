@@ -65,7 +65,7 @@ def wrapped_start_lora_training(
 	# Handle "Continue Training" mode
 	if lora_mode == "Continue Training":
 		if not existing_lora_name:
-			yield "❌ Error: Please select an existing LoRA model to continue training", None
+			yield "❌ Error: Please select an existing LoRA model to continue training", None, 0, 0
 			return
 
 		# Check if rank changed - prevents incompatible checkpoint loading
@@ -79,7 +79,7 @@ def wrapped_start_lora_training(
 				if isinstance(checkpoint, dict):
 					saved_rank = checkpoint.get('lora_rank', None)
 					if saved_rank and saved_rank != lora_rank:
-						yield f"❌ Error: Rank mismatch! Checkpoint has rank {saved_rank}, you selected rank {lora_rank}.\n\nChanging LoRA rank creates a new architecture - you cannot continue training.\n\nOptions:\n1. Keep rank {saved_rank} to continue training {existing_lora_name}\n2. Use rank {lora_rank} with a NEW model name (e.g., '{existing_lora_name}_rank{lora_rank}')", None
+						yield f"❌ Error: Rank mismatch! Checkpoint has rank {saved_rank}, you selected rank {lora_rank}.\n\nChanging LoRA rank creates a new architecture - you cannot continue training.\n\nOptions:\n1. Keep rank {saved_rank} to continue training {existing_lora_name}\n2. Use rank {lora_rank} with a NEW model name (e.g., '{existing_lora_name}_rank{lora_rank}')", None, 0, 0
 						return
 			except:
 				pass  # If can't load checkpoint, proceed anyway
@@ -88,15 +88,15 @@ def wrapped_start_lora_training(
 
 	# Validation
 	if not source_profile_id:
-		yield "❌ Error: Please select a source identity profile", None
+		yield "❌ Error: Please select a source identity profile", None, 0, 0
 		return
 
 	if not target_file and lora_mode == "New LoRA":
-		yield "❌ Error: Please upload a target video or image", None
+		yield "❌ Error: Please upload a target video or image", None, 0, 0
 		return
 
 	if not model_name:
-		yield "❌ Error: Please enter a model name", None
+		yield "❌ Error: Please enter a model name", None, 0, 0
 		return
 
 	# Get target file path
@@ -162,6 +162,12 @@ def wrapped_start_lora_training(
 			frames_used = telemetry.get('frames_used', 0)
 			batch_size_actual = telemetry.get('batch_size', batch_size)
 
+			# Format trainable params with commas if it's a number
+			if isinstance(trainable, int):
+				trainable_str = f"{trainable:,}"
+			else:
+				trainable_str = str(trainable)
+
 			# Calculate progress percentages for sliders
 			try:
 				epoch_num = int(epoch)
@@ -180,7 +186,7 @@ Loss: {loss}
 ETA: {eta}
 Device: {device}
 LoRA Rank: {rank}
-Trainable Parameters: {trainable:,}
+Trainable Parameters: {trainable_str}
 
 {message}"""
 
@@ -255,12 +261,21 @@ def render() -> gradio.Blocks:
 	"""Render the Modeler tab layout"""
 	global START_MODELER_BUTTON, STOP_MODELER_BUTTON, MODELER_STATUS, MODELER_LOSS_PLOT, MODELER_OVERALL_PROGRESS, MODELER_EPOCH_PROGRESS
 
-	with gradio.Blocks() as layout:
+	with gradio.Blocks(elem_id="modeler_layout", elem_classes=["modeler-tab"]) as layout:
 		about.render()
 
-		gradio.Markdown("## 🎯 Step 3: LoRA Paired Training (Modeler)")
+		gradio.Markdown(
+			"## 🎯 Step 3: LoRA Paired Training (Modeler)",
+			elem_id="modeler_title",
+			elem_classes=["tab-title"]
+		)
 
-		with gradio.Accordion("ℹ️ How it works", open=False):
+		with gradio.Accordion(
+			"ℹ️ How it works",
+			open=False,
+			elem_id="modeler_how_it_works_accordion",
+			elem_classes=["info-accordion"]
+		):
 			gradio.Markdown(
 				"""
 				Train a custom LoRA model that maps a **source identity** to a **target scene/person**.
@@ -278,44 +293,69 @@ def render() -> gradio.Blocks:
 				- 🚀 Smaller model size (LoRA adapters)
 				- 💾 Faster inference than full models
 				- 🔄 Can combine multiple LoRA models
-				"""
+				""",
+				elem_id="modeler_how_it_works_content",
+				elem_classes=["info-content"]
 			)
 
 		# Load Existing LoRA Option (at top)
 		lora_loader.render()
 
-		with gradio.Row():
+		with gradio.Row(elem_id="modeler_source_target_row", elem_classes=["source-target-container"]):
 			# Left Column: Source Identity
-			with gradio.Column(scale=1):
-				with gradio.Accordion("👤 Source Identity", open=True):
+			with gradio.Column(scale=1, elem_id="modeler_source_column", elem_classes=["source-column"]):
+				with gradio.Accordion(
+					"👤 Source Identity",
+					open=True,
+					elem_id="modeler_source_accordion",
+					elem_classes=["source-accordion"]
+				):
 					modeler_source.render()
 
 			# Right Column: Target Material
-			with gradio.Column(scale=1):
-				with gradio.Accordion("🎯 Target Material", open=True):
+			with gradio.Column(scale=1, elem_id="modeler_target_column", elem_classes=["target-column"]):
+				with gradio.Accordion(
+					"🎯 Target Material",
+					open=True,
+					elem_id="modeler_target_accordion",
+					elem_classes=["target-accordion"]
+				):
 					modeler_target.render()
 
 		# Training Configuration
-		with gradio.Accordion("⚙️ Training Configuration", open=True):
+		with gradio.Accordion(
+			"⚙️ Training Configuration",
+			open=True,
+			elem_id="modeler_config_accordion",
+			elem_classes=["config-accordion"]
+		):
 			modeler_options.render()
 
 		# Training Controls
-		with gradio.Row():
+		with gradio.Row(elem_id="modeler_controls_row", elem_classes=["modeler-controls"]):
 			START_MODELER_BUTTON = gradio.Button(
 				"🚀 Start LoRA Training",
 				variant="primary",
-				size="lg"
+				size="lg",
+				elem_id="start_modeler_button",
+				elem_classes=["primary-button", "modeler-start-button"]
 			)
 			STOP_MODELER_BUTTON = gradio.Button(
 				"⏹️ Stop",
 				variant="stop",
-				size="lg"
+				size="lg",
+				elem_id="stop_modeler_button",
+				elem_classes=["stop-button", "modeler-stop-button"]
 			)
 
 		# Progress Bars
-		with gradio.Row():
-			with gradio.Column(scale=1):
-				gradio.Markdown("### Progress")
+		with gradio.Row(elem_id="modeler_progress_row", elem_classes=["modeler-progress-container"]):
+			with gradio.Column(scale=1, elem_id="modeler_progress_column", elem_classes=["progress-sliders-column"]):
+				gradio.Markdown(
+					"### Progress",
+					elem_id="modeler_progress_header",
+					elem_classes=["section-header"]
+				)
 				MODELER_OVERALL_PROGRESS = gradio.Slider(
 					label="⏱️ Overall Progress (Epochs)",
 					minimum=0,
@@ -323,6 +363,7 @@ def render() -> gradio.Blocks:
 					value=0,
 					interactive=False,
 					elem_id="modeler_overall_progress",
+					elem_classes=["progress-slider", "overall-progress"],
 					show_label=True
 				)
 				MODELER_EPOCH_PROGRESS = gradio.Slider(
@@ -332,6 +373,7 @@ def render() -> gradio.Blocks:
 					value=0,
 					interactive=False,
 					elem_id="modeler_epoch_progress",
+					elem_classes=["progress-slider", "epoch-progress"],
 					show_label=True
 				)
 
@@ -342,7 +384,8 @@ def render() -> gradio.Blocks:
 				width=400, height=300,
 				tooltip=["epoch", "loss"],
 				overlay_point=True,
-				elem_classes=["loss-chart-container"],
+				elem_id="modeler_loss_plot",
+				elem_classes=["loss-chart-container", "training-chart"],
 				scale=1
 			)
 
@@ -352,11 +395,12 @@ def render() -> gradio.Blocks:
 			value="Idle - Configure settings and click 'Start LoRA Training'",
 			interactive=False,
 			lines=6,
-			elem_id="modeler_training_status"
+			elem_id="modeler_training_status",
+			elem_classes=["training-status-textbox", "monospace-text"]
 		)
 
 		# Terminal for debugging
-		with gradio.Row():
+		with gradio.Row(elem_id="modeler_terminal_row", elem_classes=["terminal-container"]):
 			terminal.render()
 
 		footer.render()

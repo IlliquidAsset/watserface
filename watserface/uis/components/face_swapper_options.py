@@ -156,9 +156,11 @@ def update_face_swapper_model(face_swapper_model : FaceSwapperModel) -> Tuple[gr
 							logger.info(f'LoRA model {face_swapper_model} requires source identity: {profile.name}', __name__)
 							logger.info(f'Auto-loading {profile.name} as source...', __name__)
 
-							# Update state to use this identity
+							# Update state to use this identity (set both state variables for compatibility)
 							state_manager.set_item('use_identity_profile', True)
 							state_manager.set_item('selected_identity_profile', source_profile_id)
+							state_manager.set_item('identity_profile_id', source_profile_id)
+							logger.info(f'✓ State updated: identity_profile_id={source_profile_id}', __name__)
 			except Exception as error:
 				logger.error(f'Failed to auto-load source identity for LoRA: {error}', __name__)
 

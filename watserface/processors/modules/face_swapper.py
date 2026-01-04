@@ -566,23 +566,36 @@ def post_process() -> None:
 
 
 def swap_face(source_face : Face, target_face : Face, temp_vision_frame : VisionFrame) -> VisionFrame:
-	model_template = get_model_options().get('template')
-	model_size = get_model_options().get('size')
+	from watserface import logger
+
+	model_name = get_model_name()
+	model_options = get_model_options()
+	model_template = model_options.get('template')
+	model_size = model_options.get('size')
+	model_type = model_options.get('type')
+
+	logger.info(f'[SWAP_FACE] Using model: {model_name} (type={model_type}, size={model_size})', __name__)
+
 	pixel_boost_size = unpack_resolution(state_manager.get_item('face_swapper_pixel_boost'))
 	pixel_boost_total = pixel_boost_size[0] // model_size[0]
 	crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark_set.get('5/68'), model_template, pixel_boost_size)
 	temp_vision_frames = []
 	crop_masks = []
 
-	if 'box' in state_manager.get_item('face_mask_types'):
+	face_mask_types = state_manager.get_item('face_mask_types')
+	logger.info(f'[SWAP_FACE] Face mask types: {face_mask_types}', __name__)
+
+	if 'box' in face_mask_types:
 		box_mask = create_box_mask(crop_vision_frame, state_manager.get_item('face_mask_blur'), state_manager.get_item('face_mask_padding'))
 		crop_masks.append(box_mask)
 
-	if 'occlusion' in state_manager.get_item('face_mask_types'):
+	if 'occlusion' in face_mask_types:
 		occlusion_mask = create_occlusion_mask(crop_vision_frame)
 		crop_masks.append(occlusion_mask)
 
 	pixel_boost_vision_frames = implode_pixel_boost(crop_vision_frame, pixel_boost_total, model_size)
+	logger.info(f'[SWAP_FACE] Processing {len(pixel_boost_vision_frames)} pixel boost frames...', __name__)
+
 	for pixel_boost_vision_frame in pixel_boost_vision_frames:
 		pixel_boost_vision_frame = prepare_crop_frame(pixel_boost_vision_frame)
 		pixel_boost_vision_frame = forward_swap_face(source_face, pixel_boost_vision_frame)
@@ -590,17 +603,19 @@ def swap_face(source_face : Face, target_face : Face, temp_vision_frame : Vision
 		temp_vision_frames.append(pixel_boost_vision_frame)
 	crop_vision_frame = explode_pixel_boost(temp_vision_frames, pixel_boost_total, model_size, pixel_boost_size)
 
-	if 'area' in state_manager.get_item('face_mask_types'):
+	if 'area' in face_mask_types:
 		face_landmark_68 = cv2.transform(target_face.landmark_set.get('68').reshape(1, -1, 2), affine_matrix).reshape(-1, 2)
 		area_mask = create_area_mask(crop_vision_frame, face_landmark_68, state_manager.get_item('face_mask_areas'))
 		crop_masks.append(area_mask)
 
-	if 'region' in state_manager.get_item('face_mask_types'):
+	if 'region' in face_mask_types:
 		region_mask = create_region_mask(crop_vision_frame, state_manager.get_item('face_mask_regions'))
 		crop_masks.append(region_mask)
 
 	crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1)
 	temp_vision_frame = paste_back(temp_vision_frame, crop_vision_frame, crop_mask, affine_matrix)
+
+	logger.info('[SWAP_FACE] ✓ Face swap complete', __name__)
 	return temp_vision_frame
 
 
@@ -743,24 +758,53 @@ def get_source_face(source_paths: List[str]) -> Face:
 
 
 def process_frame(inputs : FaceSwapperInputs, skip_cache : bool = False) -> VisionFrame:
+	from watserface import logger
+
 	reference_faces = inputs.get('reference_faces')
 	source_face = inputs.get('source_face')
 	target_vision_frame = inputs.get('target_vision_frame')
-	many_faces = sort_and_filter_faces(get_many_faces([ target_vision_frame ], skip_cache))
 
-	if state_manager.get_item('face_selector_mode') == 'many':
+	logger.info(f'[FACE_SWAPPER] process_frame: source_face={source_face is not None}', __name__)
+
+	if not source_face:
+		logger.warn('[FACE_SWAPPER] ✗ No source face provided - returning original frame', __name__)
+		return target_vision_frame
+
+	many_faces = sort_and_filter_faces(get_many_faces([ target_vision_frame ], skip_cache))
+	logger.info(f'[FACE_SWAPPER] Detected {len(many_faces)} faces in target frame', __name__)
+
+	if not many_faces:
+		logger.warn('[FACE_SWAPPER] ✗ No faces detected in target - returning original frame', __name__)
+		return target_vision_frame
+
+	face_selector_mode = state_manager.get_item('face_selector_mode')
+	logger.info(f'[FACE_SWAPPER] Face selector mode: {face_selector_mode}', __name__)
+
+	if face_selector_mode == 'many':
 		if many_faces:
-			for target_face in many_faces:
+			logger.info(f'[FACE_SWAPPER] Swapping {len(many_faces)} faces...', __name__)
+			for i, target_face in enumerate(many_faces):
+				logger.info(f'[FACE_SWAPPER] Swapping face {i+1}/{len(many_faces)}', __name__)
 				target_vision_frame = swap_face(source_face, target_face, target_vision_frame)
-	if state_manager.get_item('face_selector_mode') == 'one':
+
+	if face_selector_mode == 'one':
 		target_face = get_one_face(many_faces)
 		if target_face:
+			logger.info('[FACE_SWAPPER] Swapping single face...', __name__)
 			target_vision_frame = swap_face(source_face, target_face, target_vision_frame)
-	if state_manager.get_item('face_selector_mode') == 'reference':
+		else:
+			logger.warn('[FACE_SWAPPER] ✗ No suitable face found for "one" mode', __name__)
+
+	if face_selector_mode == 'reference':
 		similar_faces = find_similar_faces(many_faces, reference_faces, state_manager.get_item('reference_face_distance'))
 		if similar_faces:
+			logger.info(f'[FACE_SWAPPER] Swapping {len(similar_faces)} similar faces...', __name__)
 			for similar_face in similar_faces:
 				target_vision_frame = swap_face(source_face, similar_face, target_vision_frame)
+		else:
+			logger.warn('[FACE_SWAPPER] ✗ No similar faces found matching reference', __name__)
+
+	logger.info('[FACE_SWAPPER] ✓ Frame processing complete', __name__)
 	return target_vision_frame
 
 
