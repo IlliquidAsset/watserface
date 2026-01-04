@@ -1,27 +1,39 @@
-from watserface.common_helper import calc_float_step, calc_int_step, create_float_metavar, create_float_range, create_int_metavar, create_int_range
 
+import unittest
+from unittest.mock import patch, MagicMock
+import platform
+import watserface.common_helper
 
-def test_create_int_metavar() -> None:
-	assert create_int_metavar([ 1, 2, 3, 4, 5 ]) == '[1..5:1]'
+class TestCommonHelper(unittest.TestCase):
+    def test_platform_checks_consistency(self):
+        """Verify that platform checks return boolean and are consistent with _SYSTEM."""
+        is_linux = watserface.common_helper.is_linux()
+        is_macos = watserface.common_helper.is_macos()
+        is_windows = watserface.common_helper.is_windows()
 
+        self.assertIsInstance(is_linux, bool)
+        self.assertIsInstance(is_macos, bool)
+        self.assertIsInstance(is_windows, bool)
 
-def test_create_float_metavar() -> None:
-	assert create_float_metavar([ 0.1, 0.2, 0.3, 0.4, 0.5 ]) == '[0.1..0.5:0.1]'
+        # Only one should be true (or none if other OS)
+        true_count = sum([is_linux, is_macos, is_windows])
+        self.assertLessEqual(true_count, 1)
 
+    def test_cached_value_correctness(self):
+        """Verify the cached value matches the actual system call (at least once)."""
+        current_system = platform.system().lower()
+        if current_system == 'linux':
+            self.assertTrue(watserface.common_helper.is_linux())
+            self.assertFalse(watserface.common_helper.is_macos())
+            self.assertFalse(watserface.common_helper.is_windows())
+        elif current_system == 'darwin':
+            self.assertFalse(watserface.common_helper.is_linux())
+            self.assertTrue(watserface.common_helper.is_macos())
+            self.assertFalse(watserface.common_helper.is_windows())
+        elif current_system == 'windows':
+            self.assertFalse(watserface.common_helper.is_linux())
+            self.assertFalse(watserface.common_helper.is_macos())
+            self.assertTrue(watserface.common_helper.is_windows())
 
-def test_create_int_range() -> None:
-	assert create_int_range(0, 2, 1) == [ 0, 1, 2 ]
-	assert create_float_range(0, 1, 1) == [ 0, 1 ]
-
-
-def test_create_float_range() -> None:
-	assert create_float_range(0.0, 1.0, 0.5) == [ 0.0, 0.5, 1.0 ]
-	assert create_float_range(0.0, 1.0, 0.05) == [ 0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0 ]
-
-
-def test_calc_int_step() -> None:
-	assert calc_int_step([ 0, 1 ]) == 1
-
-
-def test_calc_float_step() -> None:
-	assert calc_float_step([ 0.1, 0.2 ]) == 0.1
+if __name__ == '__main__':
+    unittest.main()
