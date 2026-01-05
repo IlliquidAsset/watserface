@@ -1,5 +1,6 @@
 import math
 from collections import OrderedDict
+from functools import lru_cache
 from typing import List, Optional, Tuple
 
 import cv2
@@ -127,7 +128,7 @@ def read_video_frame(video_path : str, frame_number : int = 0) -> Optional[Visio
 		video_capture = get_video_capture(video_path)
 
 		if video_capture.isOpened():
-			frame_total = video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
+			frame_total = count_video_frame_total(video_path)
 
 			with thread_semaphore():
 				video_capture.set(cv2.CAP_PROP_POS_FRAMES, min(frame_total, frame_number - 1))
@@ -139,6 +140,7 @@ def read_video_frame(video_path : str, frame_number : int = 0) -> Optional[Visio
 	return None
 
 
+@lru_cache(maxsize = 128)
 def count_video_frame_total(video_path : str) -> int:
 	if is_video(video_path):
 		video_capture = get_video_capture(video_path)
@@ -159,6 +161,7 @@ def predict_video_frame_total(video_path : str, fps : Fps, trim_frame_start : in
 	return 0
 
 
+@lru_cache(maxsize = 128)
 def detect_video_fps(video_path : str) -> Optional[float]:
 	if is_video(video_path):
 		video_capture = get_video_capture(video_path)
@@ -212,6 +215,7 @@ def restrict_trim_frame(video_path : str, trim_frame_start : Optional[int], trim
 	return 0, video_frame_total
 
 
+@lru_cache(maxsize = 128)
 def detect_video_resolution(video_path : str) -> Optional[Resolution]:
 	if is_video(video_path):
 		video_capture = get_video_capture(video_path)
