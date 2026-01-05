@@ -1,1 +1,2 @@
-# FaceFusion Training Datasets
+# WatserFace Training Datasets
+# Handles data loading, augmentation, and preprocessing.
