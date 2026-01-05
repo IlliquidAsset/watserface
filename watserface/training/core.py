@@ -18,8 +18,8 @@ from watserface.face_set import get_face_set_manager, FaceSetConfig
 from watserface.filesystem import is_video, resolve_file_paths, resolve_relative_path
 from watserface.training.dataset_extractor import extract_training_dataset
 from watserface.training.landmark_smoother import apply_smoothing_to_dataset
-from watserface.training.train_instantid import train_instantid_model
-from watserface.training.train_xseg import train_xseg_model
+from watserface.training.trainers.identity import train_identity_model
+from watserface.training.trainers.xseg import train_xseg_model
 from watserface.training.datasets.xseg_dataset import check_dataset_masks
 from watserface.vision import read_static_image
 
@@ -196,7 +196,8 @@ def start_identity_training(
 
 		training_was_stopped = False
 		try:
-			for status_msg, train_stats in train_instantid_model(
+			# Use the new modular trainer (with internal fallback)
+			for status_msg, train_stats in train_identity_model(
 				dataset_dir=dataset_path,
 				model_name=model_name,
 				epochs=epochs,
