@@ -97,10 +97,10 @@ def train_xseg_model(dataset_dir: str, model_name: str, epochs: int, batch_size:
 	optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 	criterion = nn.BCELoss() # Binary Cross Entropy
 
-	# Training Loop
 	model.train()
 	
 	start_time = time.time()
+	avg_loss = 0.0
 
 	for epoch in progress.tqdm(range(epochs), desc="Training XSeg"):
 		epoch_loss = 0
@@ -158,7 +158,7 @@ def train_xseg_model(dataset_dir: str, model_name: str, epochs: int, batch_size:
 	model.eval()
 	torch.onnx.export(
 		model, 
-		dummy_input, 
+		(dummy_input,), 
 		output_path, 
 		input_names=['input'], 
 		output_names=['output'],

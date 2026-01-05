@@ -9,3 +9,5 @@ venv/
 *.pyc
 models/
 previewtest/
+.opencode/
+oh-my-opencode.json
