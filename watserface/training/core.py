@@ -470,7 +470,9 @@ def start_occlusion_training(
 		# Step 4: Training
 		telemetry['status'] = 'Training'
 		
-		onnx_path = train_xseg_model(
+		# train_xseg_model is a generator - consume it and extract the final model path
+		onnx_path = None
+		for status_msg, train_telemetry in train_xseg_model(
 			dataset_dir=dataset_path,
 			model_name=model_name,
 			epochs=epochs,
@@ -478,7 +480,19 @@ def start_occlusion_training(
 			learning_rate=0.001,
 			save_interval=max(10, epochs // 5),
 			progress=progress
-		)
+		):
+			if _training_stopped:
+				yield ["Training Stopped.", telemetry]
+				return
+			telemetry.update(train_telemetry)
+			yield [status_msg, telemetry]
+			# Extract the final model path from telemetry when available
+			if 'model_path' in train_telemetry:
+				onnx_path = train_telemetry['model_path']
+		
+		if not onnx_path or not os.path.exists(onnx_path):
+			yield ["❌ Error: ONNX export failed - no model path returned.", telemetry]
+			return
 
 		# Copy...
 		trained_models_dir = resolve_relative_path('../.assets/models/trained')
