@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import List, Sequence, Tuple
+import math
 
 import cv2
 import numpy
@@ -396,10 +397,7 @@ def estimate_face_angle(face_landmark_68 : FaceLandmark68) -> Angle:
 	x2, y2 = face_landmark_68[16]
 	theta = numpy.arctan2(y2 - y1, x2 - x1)
 	theta = numpy.degrees(theta) % 360
-	angles = numpy.linspace(0, 360, 5)
-	index = numpy.argmin(numpy.abs(angles - theta))
-	face_angle = int(angles[index] % 360)
-	return face_angle
+	return int(math.ceil((theta / 90.0) - 0.5) * 90) % 360
 
 
 def apply_nms(bounding_boxes : List[BoundingBox], scores : List[Score], score_threshold : float, nms_threshold : float) -> Sequence[int]:
