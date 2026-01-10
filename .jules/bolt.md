@@ -7,3 +7,7 @@
 ## 2024-05-23 - Platform Check Optimization
 **Learning:** `platform.system()` calls are relatively expensive (~240ns) and should be cached if used frequently in loops or hot paths. Since the OS is static during runtime, this value should be cached at module level. Module-level caching provides a significant speedup (~5x).
 **Action:** Use module-level constants (cached boolean results) for static system values instead of repeated function calls or string comparisons.
+
+## 2024-05-23 - Scalar Math Optimization
+**Learning:** Using `numpy` functions (`arctan2`, `degrees`, `linspace`, `argmin`) for simple scalar calculations incurs significant overhead (e.g., array allocation, dispatch). Pure Python `math` operations are much faster (~6-7x) for single-value logic.
+**Action:** Prefer `math` module over `numpy` when processing individual scalars, especially in hot loops like per-face angle estimation.
