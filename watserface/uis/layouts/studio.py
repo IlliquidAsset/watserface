@@ -33,8 +33,10 @@ OUTPUT_VIDEO = None
 OUTPUT_IMAGE = None
 
 STATUS_LOG = None
-PHASE_INDICATOR = None
-
+IDENTITY_STATUS = None
+OCCLUSION_STATUS = None
+MAPPING_STATUS = None
+EXECUTION_STATUS = None
 
 def pre_check() -> bool:
     return True
@@ -43,34 +45,18 @@ def pre_check() -> bool:
 def render() -> gradio.Blocks:
     global ORCHESTRATOR
     global IDENTITY_NAME_INPUT, IDENTITY_FILES_INPUT, IDENTITY_ADD_BTN, IDENTITY_TRAIN_BTN
-    global IDENTITY_EPOCHS_SLIDER, IDENTITY_LIST
+    global IDENTITY_EPOCHS_SLIDER, IDENTITY_LIST, IDENTITY_STATUS
     global TARGET_INPUT, TARGET_INFO
-    global OCCLUSION_NAME_INPUT, OCCLUSION_TRAIN_BTN, OCCLUSION_EPOCHS_SLIDER
-    global MAP_BTN, MAPPING_DISPLAY
+    global OCCLUSION_NAME_INPUT, OCCLUSION_TRAIN_BTN, OCCLUSION_EPOCHS_SLIDER, OCCLUSION_STATUS
+    global MAP_BTN, MAPPING_DISPLAY, MAPPING_STATUS
     global PREVIEW_BTN, PREVIEW_IMAGE, QUALITY_DISPLAY
-    global EXECUTE_BTN, OUTPUT_VIDEO, OUTPUT_IMAGE
-    global STATUS_LOG, PHASE_INDICATOR
+    global EXECUTE_BTN, OUTPUT_VIDEO, OUTPUT_IMAGE, EXECUTION_STATUS
+    global STATUS_LOG
     
     ORCHESTRATOR = StudioOrchestrator()
     
     with gradio.Blocks(elem_id='studio_container') as layout:
-        
-        with gradio.Row():
-            gradio.HTML('''
-                <div style="text-align:center; padding: 10px;">
-                    <h1 style="margin:0; font-size: 2em;">WATSERFACE STUDIO</h1>
-                    <p style="margin:0; color: #666;">Unified Face Synthesis Pipeline v1.0.0</p>
-                </div>
-            ''')
-        
-        with gradio.Row():
-            PHASE_INDICATOR = gradio.Textbox(
-                label='Current Phase',
-                value='IDLE',
-                interactive=False,
-                scale=1
-            )
-        
+
         with gradio.Row():
             with gradio.Column(scale=1):
                 gradio.Markdown('### 1. Identity Builder')
@@ -97,6 +83,13 @@ def render() -> gradio.Blocks:
                     maximum=500,
                     value=100,
                     step=10
+                )
+                
+                IDENTITY_STATUS = gradio.Textbox(
+                    label='Identity Status',
+                    value='IDLE',
+                    interactive=False,
+                    lines=3
                 )
                 
                 IDENTITY_LIST = gradio.Textbox(
@@ -138,6 +131,13 @@ def render() -> gradio.Blocks:
                 )
                 
                 OCCLUSION_TRAIN_BTN = gradio.Button('Train Occlusion Model', variant='secondary')
+                
+                OCCLUSION_STATUS = gradio.Textbox(
+                    label='Occlusion Status',
+                    value='IDLE',
+                    interactive=False,
+                    lines=3
+                )
         
         with gradio.Row():
             with gradio.Column(scale=1):
@@ -153,6 +153,13 @@ def render() -> gradio.Blocks:
                     value='No mappings yet',
                     lines=3,
                     interactive=False
+                )
+
+                MAPPING_STATUS = gradio.Textbox(
+                    label='Mapping Status',
+                    value='IDLE',
+                    interactive=False,
+                    lines=1
                 )
                 
                 QUALITY_DISPLAY = gradio.Textbox(
@@ -182,6 +189,13 @@ def render() -> gradio.Blocks:
                     visible=False,
                     interactive=False
                 )
+
+                EXECUTION_STATUS = gradio.Textbox(
+                    label='Execution Status',
+                    value='IDLE',
+                    interactive=False,
+                    lines=1
+                )
         
         with gradio.Row():
             STATUS_LOG = gradio.Textbox(
@@ -190,7 +204,15 @@ def render() -> gradio.Blocks:
                 lines=8,
                 interactive=False
             )
-    
+
+        with gradio.Row():
+            gradio.HTML('''
+                <div style="text-align:center; padding: 20px; border-top: 1px solid #eee; margin-top: 20px;">
+                    <h3 style="margin:0; color: #444;">WATSERFACE STUDIO</h3>
+                    <p style="margin:0; font-size: 0.9em; color: #888;">Unified Face Synthesis Pipeline v1.0.0</p>
+                </div>
+            ''')
+
     return layout
 
 
@@ -203,8 +225,8 @@ def listen() -> None:
     
     IDENTITY_TRAIN_BTN.click(
         fn=handle_train_identity,
-        inputs=[IDENTITY_NAME_INPUT, IDENTITY_EPOCHS_SLIDER],
-        outputs=[STATUS_LOG, PHASE_INDICATOR, IDENTITY_LIST]
+        inputs=[IDENTITY_NAME_INPUT, IDENTITY_EPOCHS_SLIDER, IDENTITY_FILES_INPUT],
+        outputs=[STATUS_LOG, IDENTITY_STATUS, IDENTITY_LIST]
     )
     
     TARGET_INPUT.change(
@@ -216,13 +238,13 @@ def listen() -> None:
     OCCLUSION_TRAIN_BTN.click(
         fn=handle_train_occlusion,
         inputs=[OCCLUSION_NAME_INPUT, OCCLUSION_EPOCHS_SLIDER],
-        outputs=[STATUS_LOG, PHASE_INDICATOR]
+        outputs=[STATUS_LOG, OCCLUSION_STATUS]
     )
     
     MAP_BTN.click(
         fn=handle_auto_map,
         inputs=[],
-        outputs=[STATUS_LOG, MAPPING_DISPLAY]
+        outputs=[STATUS_LOG, MAPPING_DISPLAY, MAPPING_STATUS]
     )
     
     PREVIEW_BTN.click(
@@ -234,7 +256,7 @@ def listen() -> None:
     EXECUTE_BTN.click(
         fn=handle_execute,
         inputs=[],
-        outputs=[STATUS_LOG, PHASE_INDICATOR, OUTPUT_VIDEO, OUTPUT_IMAGE, PREVIEW_IMAGE]
+        outputs=[STATUS_LOG, EXECUTION_STATUS, OUTPUT_VIDEO, OUTPUT_IMAGE, PREVIEW_IMAGE]
     )
 
 
@@ -249,14 +271,44 @@ def handle_add_identity(name: str, files: List[Any]):
     return '\n'.join(ORCHESTRATOR.state.get_recent_logs()), get_identity_list()
 
 
-def handle_train_identity(name: str, epochs: int):
+def handle_train_identity(name: str, epochs: int, files: List[Any]):
     if not name:
-        return 'Please provide identity name', 'IDLE', get_identity_list()
+        yield 'Please provide identity name', 'Error: No name provided', get_identity_list()
+        return
     
+    # Auto-add media if not already added
+    if name not in ORCHESTRATOR.state.identities and files:
+        yield f'Auto-adding media for {name}...', 'Preparing...', get_identity_list()
+        for msg, _ in ORCHESTRATOR.add_identity_media(name, files):
+            pass
+
+    yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), 'Starting...', get_identity_list()
+    
+    success = False
     for msg, telemetry in ORCHESTRATOR.train_identity(name, int(epochs)):
-        pass
+        status_text = "Phase: Training\n"
+        
+        if telemetry:
+            if telemetry.get('status') == 'Complete' or telemetry.get('model_path'):
+                success = True
+            
+            if 'epoch' in telemetry:
+                status_text += f"Epoch: {telemetry.get('epoch', '?')}/{telemetry.get('total_epochs', '?')}\n"
+            if 'loss' in telemetry:
+                status_text += f"Loss: {telemetry['loss']}\n"
+            if 'eta' in telemetry:
+                status_text += f"ETA: {telemetry['eta']}\n"
+            if 'status' in telemetry:
+                status_text += f"Status: {telemetry['status']}\n"
+            if 'overall_progress' in telemetry:
+                 status_text += f"Progress: {telemetry['overall_progress']}"
+
+        yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), status_text, get_identity_list()
     
-    return '\n'.join(ORCHESTRATOR.state.get_recent_logs()), ORCHESTRATOR.state.phase.value.upper(), get_identity_list()
+    if success:
+        yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), f"COMPLETE: {name} trained", get_identity_list()
+    else:
+        yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), f"FAILED: Could not train {name}. Check logs.", get_identity_list()
 
 
 def handle_set_target(file: Any):
@@ -273,23 +325,42 @@ def handle_set_target(file: Any):
 
 def handle_train_occlusion(name: str, epochs: int):
     if not name:
-        return 'Please provide occlusion model name', 'IDLE'
+        yield 'Please provide occlusion model name', 'Error: No name provided'
+        return
+    
+    yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), 'Starting...'
     
     for msg, telemetry in ORCHESTRATOR.train_occlusion(name, int(epochs)):
-        pass
+        status_text = "Phase: Training Occlusion\n"
+        
+        if telemetry:
+            if 'epoch' in telemetry:
+                status_text += f"Epoch: {telemetry.get('epoch', '?')}/{telemetry.get('total_epochs', '?')}\n"
+            if 'loss' in telemetry:
+                status_text += f"Loss: {telemetry['loss']}\n"
+            if 'eta' in telemetry:
+                status_text += f"ETA: {telemetry['eta']}\n"
+            if 'status' in telemetry:
+                status_text += f"Status: {telemetry['status']}\n"
+            if 'overall_progress' in telemetry:
+                 status_text += f"Progress: {telemetry['overall_progress']}"
+        
+        yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), status_text
     
-    return '\n'.join(ORCHESTRATOR.state.get_recent_logs()), ORCHESTRATOR.state.phase.value.upper()
+    yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), f"COMPLETE: {name} trained"
 
 
 def handle_auto_map():
     mappings_text = []
+    yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), '...', 'Scanning...'
+    
     for msg, data in ORCHESTRATOR.auto_map_faces():
-        pass
+        yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), '...', 'Scanning...'
     
     for m in ORCHESTRATOR.state.mappings:
         mappings_text.append(f"Face {m.target_face_index} -> {m.source_identity} (conf: {m.confidence:.2f})")
     
-    return '\n'.join(ORCHESTRATOR.state.get_recent_logs()), '\n'.join(mappings_text) or 'No mappings'
+    yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), '\n'.join(mappings_text) or 'No mappings', 'Mapped'
 
 
 def handle_preview():
@@ -307,22 +378,25 @@ def handle_preview():
 
 def handle_execute():
     output_path = None
+    yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), 'Starting...', gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=True)
+    
     for msg, data in ORCHESTRATOR.execute():
         if data is not None:
             output_path = data
+        yield '\n'.join(ORCHESTRATOR.state.get_recent_logs()), 'Processing...', gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=True)
     
     logs = '\n'.join(ORCHESTRATOR.state.get_recent_logs())
-    phase = ORCHESTRATOR.state.phase.value.upper()
     
     if output_path:
         import mimetypes
         mime_type, _ = mimetypes.guess_type(output_path)
         if mime_type and mime_type.startswith('video'):
-            return logs, phase, gradio.update(value=output_path, visible=True), gradio.update(visible=False), gradio.update(visible=False)
+            yield logs, 'Complete', gradio.update(value=output_path, visible=True), gradio.update(visible=False), gradio.update(visible=False)
         else:
-            return logs, phase, gradio.update(visible=False), gradio.update(value=output_path, visible=True), gradio.update(visible=False)
-    
-    return logs, phase, gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=True)
+            yield logs, 'Complete', gradio.update(visible=False), gradio.update(value=output_path, visible=True), gradio.update(visible=False)
+    else:
+        yield logs, 'Failed', gradio.update(visible=False), gradio.update(visible=False), gradio.update(visible=True)
+
 
 
 def get_identity_list() -> str:

@@ -14,7 +14,40 @@ class StudioOrchestrator:
     def __init__(self):
         self.state = StudioState()
         self.identity_builder = create_identity_builder()
-    
+        self._scan_workspace()
+
+    def _scan_workspace(self):
+        """Scan workspace for existing face sets and identities."""
+        try:
+            face_sets = self.identity_builder.list_face_sets()
+            for fs_data in face_sets:
+                name = fs_data.get('name', 'Unknown')
+                fs_id = fs_data.get('id')
+
+                if name not in self.state.identities:
+                    identity = self.state.add_identity(name)
+                    identity.face_set_id = fs_id
+
+                    # Check for existing trained model
+                    set_dir = self.identity_builder.face_set_dir / fs_id
+                    if set_dir.exists():
+                        # Look for model files
+                        potential_models = (
+                            list(set_dir.glob("*_controlnet")) +
+                            list(set_dir.glob("*.pth")) +
+                            list(set_dir.glob("*.safetensors"))
+                        )
+
+                        for model_path in potential_models:
+                            if model_path.is_dir() or model_path.is_file():
+                                identity.model_path = str(model_path)
+                                identity.epochs_trained = 100  # Assume trained
+                                break
+
+                    self.state.log(f"Recovered identity '{name}' from workspace")
+        except Exception as e:
+            logger.warn(f"Workspace scan failed: {e}", __name__)
+
     def add_identity_media(self, name: str, files: List[Any]) -> Generator[Tuple[str, Dict], None, None]:
         paths = self._normalize_paths(files)
         if not paths:

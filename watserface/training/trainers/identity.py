@@ -353,7 +353,30 @@ class IdentityControlNetTrainer:
                 epoch_loss += loss.item() * gradient_accumulation_steps
                 batch_count += 1
                 global_step += 1
-            
+
+                # Granular progress updates
+                if batch_count % max(1, len(dataloader) // 20) == 0:
+                    batch_pct = (batch_count / len(dataloader)) * 100
+                    overall_pct = ((epoch * len(dataloader) + batch_count) / (epochs * len(dataloader))) * 100
+                    current_loss = epoch_loss / batch_count
+
+                    elapsed = time.time() - start_time
+                    current_step = epoch * len(dataloader) + batch_count
+                    total_steps = epochs * len(dataloader)
+                    avg_step = elapsed / max(1, current_step)
+                    eta = avg_step * (total_steps - current_step)
+
+                    telemetry = {
+                        'epoch': epoch + 1,
+                        'total_epochs': epochs,
+                        'loss': f"{current_loss:.4f}",
+                        'epoch_progress': f"{batch_pct:.1f}%",
+                        'overall_progress': f"{overall_pct:.1f}%",
+                        'eta': f"{int(eta // 60)}m {int(eta % 60)}s",
+                        'status': 'Training'
+                    }
+                    yield f"Epoch {epoch + 1}/{epochs} ({batch_pct:.0f}%) | Loss: {current_loss:.4f}", telemetry
+
             avg_loss = epoch_loss / max(batch_count, 1)
             epoch_time = time.time() - epoch_start
             
