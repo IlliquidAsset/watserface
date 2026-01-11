@@ -5,6 +5,7 @@ import gradio
 import watserface.choices
 from watserface import face_masker, state_manager, wording
 from watserface.common_helper import calc_float_step, calc_int_step
+from watserface.filesystem import get_file_name, resolve_file_paths, resolve_relative_path
 from watserface.types import FaceMaskArea, FaceMaskRegion, FaceMaskType, FaceOccluderModel, FaceParserModel
 from watserface.uis.core import register_ui_component
 
@@ -40,6 +41,7 @@ def render() -> None:
 	with gradio.Row():
 		FACE_OCCLUDER_MODEL_DROPDOWN = gradio.Dropdown(
 			label = wording.get('uis.face_occluder_model_dropdown'),
+			info = wording.get('help.face_occluder_model'),
 			choices = watserface.choices.face_occluder_models,
 			value = state_manager.get_item('face_occluder_model'),
 			scale = 8
@@ -52,6 +54,7 @@ def render() -> None:
 		)
 		FACE_PARSER_MODEL_DROPDOWN = gradio.Dropdown(
 			label = wording.get('uis.face_parser_model_dropdown'),
+			info = wording.get('help.face_parser_model'),
 			choices = watserface.choices.face_parser_models,
 			value = state_manager.get_item('face_parser_model'),
 			scale = 9
@@ -75,6 +78,7 @@ def render() -> None:
 	)
 	FACE_MASK_BLUR_SLIDER = gradio.Slider(
 		label = wording.get('uis.face_mask_blur_slider'),
+		info = wording.get('help.face_mask_blur'),
 		step = calc_float_step(watserface.choices.face_mask_blur_range),
 		minimum = watserface.choices.face_mask_blur_range[0],
 		maximum = watserface.choices.face_mask_blur_range[-1],
@@ -85,6 +89,7 @@ def render() -> None:
 		with gradio.Row():
 			FACE_MASK_PADDING_TOP_SLIDER = gradio.Slider(
 				label = wording.get('uis.face_mask_padding_top_slider'),
+				info = wording.get('help.face_mask_padding'),
 				step = calc_int_step(watserface.choices.face_mask_padding_range),
 				minimum = watserface.choices.face_mask_padding_range[0],
 				maximum = watserface.choices.face_mask_padding_range[-1],
@@ -93,6 +98,7 @@ def render() -> None:
 			)
 			FACE_MASK_PADDING_RIGHT_SLIDER = gradio.Slider(
 				label = wording.get('uis.face_mask_padding_right_slider'),
+				info = wording.get('help.face_mask_padding'),
 				step = calc_int_step(watserface.choices.face_mask_padding_range),
 				minimum = watserface.choices.face_mask_padding_range[0],
 				maximum = watserface.choices.face_mask_padding_range[-1],
@@ -102,6 +108,7 @@ def render() -> None:
 		with gradio.Row():
 			FACE_MASK_PADDING_BOTTOM_SLIDER = gradio.Slider(
 				label = wording.get('uis.face_mask_padding_bottom_slider'),
+				info = wording.get('help.face_mask_padding'),
 				step = calc_int_step(watserface.choices.face_mask_padding_range),
 				minimum = watserface.choices.face_mask_padding_range[0],
 				maximum = watserface.choices.face_mask_padding_range[-1],
@@ -110,6 +117,7 @@ def render() -> None:
 			)
 			FACE_MASK_PADDING_LEFT_SLIDER = gradio.Slider(
 				label = wording.get('uis.face_mask_padding_left_slider'),
+				info = wording.get('help.face_mask_padding'),
 				step = calc_int_step(watserface.choices.face_mask_padding_range),
 				minimum = watserface.choices.face_mask_padding_range[0],
 				maximum = watserface.choices.face_mask_padding_range[-1],
