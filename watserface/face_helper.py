@@ -1,3 +1,4 @@
+import math
 from functools import lru_cache
 from typing import List, Sequence, Tuple
 
@@ -394,11 +395,9 @@ def convert_to_face_landmark_5_from_478(face_landmark_478 : FaceLandmark478) -> 
 def estimate_face_angle(face_landmark_68 : FaceLandmark68) -> Angle:
 	x1, y1 = face_landmark_68[0]
 	x2, y2 = face_landmark_68[16]
-	theta = numpy.arctan2(y2 - y1, x2 - x1)
-	theta = numpy.degrees(theta) % 360
-	angles = numpy.linspace(0, 360, 5)
-	index = numpy.argmin(numpy.abs(angles - theta))
-	face_angle = int(angles[index] % 360)
+	theta = math.atan2(y2 - y1, x2 - x1)
+	theta = math.degrees(theta) % 360
+	face_angle = int(math.ceil((theta - 45) / 90) * 90) % 360
 	return face_angle
 
 
