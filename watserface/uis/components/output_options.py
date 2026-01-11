@@ -46,6 +46,7 @@ def render() -> None:
 		output_video_resolutions = create_video_resolutions(output_video_resolution)
 	OUTPUT_IMAGE_QUALITY_SLIDER = gradio.Slider(
 		label = wording.get('uis.output_image_quality_slider'),
+		info = wording.get('help.output_image_quality'),
 		value = state_manager.get_item('output_image_quality'),
 		step = calc_int_step(watserface.choices.output_image_quality_range),
 		minimum = watserface.choices.output_image_quality_range[0],
@@ -54,18 +55,21 @@ def render() -> None:
 	)
 	OUTPUT_IMAGE_RESOLUTION_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.output_image_resolution_dropdown'),
+		info = wording.get('help.output_image_resolution'),
 		choices = output_image_resolutions,
 		value = state_manager.get_item('output_image_resolution'),
 		visible = is_image(state_manager.get_item('target_path'))
 	)
 	OUTPUT_AUDIO_ENCODER_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.output_audio_encoder_dropdown'),
+		info = wording.get('help.output_audio_encoder'),
 		choices = available_encoder_set.get('audio'),
 		value = state_manager.get_item('output_audio_encoder'),
 		visible = is_video(state_manager.get_item('target_path'))
 	)
 	OUTPUT_AUDIO_QUALITY_SLIDER = gradio.Slider(
 		label = wording.get('uis.output_audio_quality_slider'),
+		info = wording.get('help.output_audio_quality'),
 		value = state_manager.get_item('output_audio_quality'),
 		step = calc_int_step(watserface.choices.output_audio_quality_range),
 		minimum = watserface.choices.output_audio_quality_range[0],
@@ -74,6 +78,7 @@ def render() -> None:
 	)
 	OUTPUT_AUDIO_VOLUME_SLIDER = gradio.Slider(
 		label = wording.get('uis.output_audio_volume_slider'),
+		info = wording.get('help.output_audio_volume'),
 		value = state_manager.get_item('output_audio_volume'),
 		step = calc_int_step(watserface.choices.output_audio_volume_range),
 		minimum = watserface.choices.output_audio_volume_range[0],
@@ -82,18 +87,21 @@ def render() -> None:
 	)
 	OUTPUT_VIDEO_ENCODER_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.output_video_encoder_dropdown'),
+		info = wording.get('help.output_video_encoder'),
 		choices = available_encoder_set.get('video'),
 		value = state_manager.get_item('output_video_encoder'),
 		visible = is_video(state_manager.get_item('target_path'))
 	)
 	OUTPUT_VIDEO_PRESET_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.output_video_preset_dropdown'),
+		info = wording.get('help.output_video_preset'),
 		choices = watserface.choices.output_video_presets,
 		value = state_manager.get_item('output_video_preset'),
 		visible = is_video(state_manager.get_item('target_path'))
 	)
 	OUTPUT_VIDEO_QUALITY_SLIDER = gradio.Slider(
 		label = wording.get('uis.output_video_quality_slider'),
+		info = wording.get('help.output_video_quality'),
 		value = state_manager.get_item('output_video_quality'),
 		step = calc_int_step(watserface.choices.output_video_quality_range),
 		minimum = watserface.choices.output_video_quality_range[0],
@@ -102,12 +110,14 @@ def render() -> None:
 	)
 	OUTPUT_VIDEO_RESOLUTION_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.output_video_resolution_dropdown'),
+		info = wording.get('help.output_video_resolution'),
 		choices = output_video_resolutions,
 		value = state_manager.get_item('output_video_resolution'),
 		visible = is_video(state_manager.get_item('target_path'))
 	)
 	OUTPUT_VIDEO_FPS_SLIDER = gradio.Slider(
 		label = wording.get('uis.output_video_fps_slider'),
+		info = wording.get('help.output_video_fps'),
 		value = state_manager.get_item('output_video_fps'),
 		step = 0.01,
 		minimum = 1,
