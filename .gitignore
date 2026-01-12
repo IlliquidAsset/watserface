@@ -11,3 +11,4 @@ models/
 previewtest/
 .opencode/
 oh-my-opencode.json
+*.log
