@@ -1,11 +1,18 @@
 import os
 import zlib
-from typing import Optional
+from typing import Optional, Union
+
+import numpy
 
 from watserface.filesystem import get_file_name, is_file
 
 
-def create_hash(content : bytes) -> str:
+def create_hash(content : Union[bytes, numpy.ndarray]) -> str:
+	if isinstance(content, numpy.ndarray):
+		if content.flags['C_CONTIGUOUS']:
+			return format(zlib.crc32(content), '08x')
+		return format(zlib.crc32(content.tobytes()), '08x')
+
 	return format(zlib.crc32(content), '08x')
 
 

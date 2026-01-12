@@ -54,12 +54,12 @@ def set_previous_faces(faces : List[Face]) -> None:
 
 
 def get_static_faces(vision_frame : VisionFrame) -> Optional[List[Face]]:
-	vision_hash = create_hash(vision_frame.tobytes())
+	vision_hash = create_hash(vision_frame)
 	return FACE_STORE.get('static_faces').get(vision_hash)
 
 
 def set_static_faces(vision_frame : VisionFrame, faces : List[Face]) -> None:
-	vision_hash = create_hash(vision_frame.tobytes())
+	vision_hash = create_hash(vision_frame)
 	if vision_hash:
 		FACE_STORE['static_faces'][vision_hash] = faces
 
