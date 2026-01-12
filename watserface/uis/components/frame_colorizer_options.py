@@ -22,18 +22,21 @@ def render() -> None:
 	has_frame_colorizer = 'frame_colorizer' in state_manager.get_item('processors')
 	FRAME_COLORIZER_MODEL_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.frame_colorizer_model_dropdown'),
+		info = wording.get('help.frame_colorizer_model'),
 		choices = processors_choices.frame_colorizer_models,
 		value = state_manager.get_item('frame_colorizer_model'),
 		visible = has_frame_colorizer
 	)
 	FRAME_COLORIZER_SIZE_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.frame_colorizer_size_dropdown'),
+		info = wording.get('help.frame_colorizer_size'),
 		choices = processors_choices.frame_colorizer_sizes,
 		value = state_manager.get_item('frame_colorizer_size'),
 		visible = has_frame_colorizer
 	)
 	FRAME_COLORIZER_BLEND_SLIDER = gradio.Slider(
 		label = wording.get('uis.frame_colorizer_blend_slider'),
+		info = wording.get('help.frame_colorizer_blend'),
 		value = state_manager.get_item('frame_colorizer_blend'),
 		step = calc_int_step(processors_choices.frame_colorizer_blend_range),
 		minimum = processors_choices.frame_colorizer_blend_range[0],
@@ -76,6 +79,3 @@ def update_frame_colorizer_size(frame_colorizer_size : str) -> None:
 
 def update_frame_colorizer_blend(frame_colorizer_blend : float) -> None:
 	state_manager.set_item('frame_colorizer_blend', int(frame_colorizer_blend))
-
-
-
