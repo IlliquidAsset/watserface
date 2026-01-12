@@ -20,12 +20,14 @@ def render() -> None:
 	has_frame_enhancer = 'frame_enhancer' in state_manager.get_item('processors')
 	FRAME_ENHANCER_MODEL_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.frame_enhancer_model_dropdown'),
+		info = wording.get('help.frame_enhancer_model'),
 		choices = processors_choices.frame_enhancer_models,
 		value = state_manager.get_item('frame_enhancer_model'),
 		visible = has_frame_enhancer
 	)
 	FRAME_ENHANCER_BLEND_SLIDER = gradio.Slider(
 		label = wording.get('uis.frame_enhancer_blend_slider'),
+		info = wording.get('help.frame_enhancer_blend'),
 		value = state_manager.get_item('frame_enhancer_blend'),
 		step = calc_int_step(processors_choices.frame_enhancer_blend_range),
 		minimum = processors_choices.frame_enhancer_blend_range[0],
