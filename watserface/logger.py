@@ -1,13 +1,32 @@
-from logging import Logger, basicConfig, getLogger
+import logging
+import os
+from logging import Logger, basicConfig, getLogger, FileHandler
 
 import watserface.choices
 from watserface.common_helper import get_first, get_last
 from watserface.types import LogLevel
 
+# Global file handler for persistent logging
+LOG_FILE = 'watserface.log'
+_file_handler = None
 
 def init(log_level : LogLevel) -> None:
+	global _file_handler
+	
+	# Basic config for console
 	basicConfig(format = '[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
-	get_package_logger().setLevel(watserface.choices.log_level_set.get(log_level))
+	
+	package_logger = get_package_logger()
+	package_logger.setLevel(watserface.choices.log_level_set.get(log_level))
+	
+	# Add file handler if not already added
+	if not _file_handler:
+		try:
+			_file_handler = FileHandler(LOG_FILE, mode='a', encoding='utf-8')
+			_file_handler.setFormatter(logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+			package_logger.addHandler(_file_handler)
+		except Exception as e:
+			print(f"Failed to initialize file logging: {e}")
 
 
 def get_package_logger() -> Logger:

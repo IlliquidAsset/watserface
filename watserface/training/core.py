@@ -134,8 +134,6 @@ def start_identity_training(
 			else:
 				# Traditional temp directory extraction (backward compatible)
 				dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_identity')
-				if os.path.exists(dataset_path):
-					shutil.rmtree(dataset_path)
 				os.makedirs(dataset_path, exist_ok=True)
 
 				logger.info(f"Extracting dataset from {len(source_paths)} source file(s)...", __name__)
@@ -193,6 +191,10 @@ def start_identity_training(
 		# Step 3: Train InstantID model
 		telemetry['status'] = 'Training'
 		onnx_path = ""
+		
+		# Use a consistent save directory for models to allow resumption
+		model_save_dir = os.path.join('models', 'identities', model_name.lower().replace(' ', '_'))
+		os.makedirs(model_save_dir, exist_ok=True)
 
 		training_was_stopped = False
 		try:
@@ -203,7 +205,8 @@ def start_identity_training(
 				epochs=epochs,
 				batch_size=4,
 				learning_rate=0.0001,
-				save_interval=max(10, epochs // 5)
+				save_interval=max(10, epochs // 5),
+				save_dir=model_save_dir  # Pass the persistent save directory
 			):
 				if _training_stopped:
 					training_was_stopped = True
@@ -421,8 +424,6 @@ def start_occlusion_training(
 		logger.info(f"Starting Occlusion Training for '{model_name}'...", __name__)
 
 		dataset_path = os.path.join(state_manager.get_item('jobs_path'), 'training_dataset_occlusion')
-		if os.path.exists(dataset_path):
-			shutil.rmtree(dataset_path)
 		os.makedirs(dataset_path, exist_ok=True)
 
 		target_path = target_file.name if hasattr(target_file, 'name') else target_file
@@ -471,6 +472,10 @@ def start_occlusion_training(
 		# Step 4: Training
 		telemetry['status'] = 'Training'
 		
+		# Use a consistent save directory for models to allow resumption
+		model_save_dir = os.path.join('models', 'identities', model_name.lower().replace(' ', '_'), 'xseg')
+		os.makedirs(model_save_dir, exist_ok=True)
+		
 		# train_xseg_model is a generator - consume it and extract the final model path
 		onnx_path = None
 		for status_msg, train_telemetry in train_xseg_model(
@@ -480,7 +485,8 @@ def start_occlusion_training(
 			batch_size=4,
 			learning_rate=0.001,
 			save_interval=max(10, epochs // 5),
-			progress=progress
+			progress=progress,
+			save_dir=model_save_dir
 		):
 			if _training_stopped:
 				yield ["Training Stopped.", telemetry]

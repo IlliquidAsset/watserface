@@ -153,9 +153,21 @@ class XSegTrainer:
         }
         
         for epoch in range(start_epoch, epochs):
+            # Check for stop signal at start of epoch
+            from watserface.training import core as training_core
+            if training_core._training_stopped:
+                logger.info(f"[XSeg] Training stopped at epoch {epoch}", __name__)
+                self._save_checkpoint(checkpoint_path, epoch, avg_loss)
+                yield f"Training stopped at epoch {epoch}. Checkpoint saved.", {
+                    'status': 'Stopped',
+                    'epoch': epoch,
+                    'checkpoint_saved': True
+                }
+                return
+
             epoch_loss = 0.0
             epoch_start = time.time()
-            
+
             for batch_idx, (images, masks) in enumerate(dataloader):
                 images = images.to(self.device)
                 masks = masks.to(self.device).float()

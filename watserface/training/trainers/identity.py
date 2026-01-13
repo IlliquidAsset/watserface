@@ -12,7 +12,9 @@ from typing import Iterator, Tuple, Dict, Any, Optional, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+import cv2
+import numpy as np
 
 try:
     from diffusers import (
@@ -40,6 +42,38 @@ except ImportError:
     ACCELERATE_AVAILABLE = False
 
 from watserface import logger
+
+
+class FaceDataset(Dataset):
+    """
+    Dataset for SD1.5 Identity Training.
+    Returns images resized to 512x512.
+    """
+    def __init__(self, dataset_dir, max_frames=1000):
+        all_files = sorted([os.path.join(dataset_dir, f) for f in os.listdir(dataset_dir) if f.endswith('.png')])
+
+        # Sample frames uniformly if we have more than max_frames
+        if len(all_files) > max_frames:
+            indices = torch.linspace(0, len(all_files) - 1, max_frames).long()
+            self.files = [all_files[i] for i in indices]
+            logger.info(f"Sampled {max_frames} frames from {len(all_files)} total frames", __name__)
+        else:
+            self.files = all_files
+            logger.info(f"Using all {len(all_files)} frames for training", __name__)
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        img = cv2.imread(self.files[idx])
+        # Resize to 512x512 for Stable Diffusion 1.5
+        img = cv2.resize(img, (512, 512))
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # Normalize to [0, 1] then [-1, 1] usually for SD, but VAE expects [0, 1] or [-1, 1]?
+        # Diffusers VAE usually expects [-1, 1] but here we stick to [0, 1] and let pipeline handle or check VAE expectation.
+        # Actually standard diffusers pipeline expects [0, 1] and converts, or [-1, 1].
+        # Let's return [0, 1] tensor.
+        return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
 
 
 class IdentityControlNetTrainer:
@@ -98,6 +132,10 @@ class IdentityControlNetTrainer:
         if torch.cuda.is_available():
             return torch.device('cuda')
         elif torch.backends.mps.is_available():
+            # MPS works better with fp32 for now, disable mixed precision
+            if self.mixed_precision == "fp16":
+                logger.info("[Identity] MPS detected, using fp32 instead of fp16 for better compatibility", __name__)
+                self.mixed_precision = "no"
             return torch.device('mps')
         return torch.device('cpu')
     
@@ -149,7 +187,11 @@ class IdentityControlNetTrainer:
             )
         else:
             logger.info("[Identity] Initializing ControlNet from UNet config", __name__)
-            self.controlnet = ControlNetModel.from_unet(self.unet)
+            # Create ControlNet with 4 conditioning channels (to match our 4-channel embedding projection)
+            self.controlnet = ControlNetModel.from_unet(
+                self.unet,
+                conditioning_channels=4
+            )
         
         # Projection layer: InsightFace 512-dim -> 4-channel conditioning image
         # This projects the identity embedding to a spatial conditioning signal
@@ -188,11 +230,16 @@ class IdentityControlNetTrainer:
             batch_size: Batch size
             
         Returns:
-            conditioning: [B, 4, 64, 64] spatial conditioning for ControlNet
+            conditioning: [B, 4, 512, 512] spatial conditioning for ControlNet
         """
-        # Project to spatial
+        # Project to spatial (64x64)
         proj = self.embedding_proj(identity_embeddings)  # [B, 4*64*64]
         conditioning = proj.view(batch_size, 4, 64, 64)  # [B, 4, 64, 64]
+        
+        # Upscale to 512x512 to match pixel-space expectations of ControlNet
+        # ControlNet will internal downsample it back to 64x64 to match latents
+        conditioning = F.interpolate(conditioning, size=(512, 512), mode='nearest')
+        
         return conditioning
     
     def train(
@@ -279,14 +326,66 @@ class IdentityControlNetTrainer:
         global_step = 0
         avg_loss = 0.0
         loss_history = []
-        
+        start_epoch = 0
+
         checkpoint_path = os.path.join(save_dir, f"{model_name}_controlnet")
-        
-        for epoch in range(epochs):
+
+        # Check for existing checkpoint to resume training
+        training_state_path = os.path.join(checkpoint_path, "training_state.pth")
+        if os.path.exists(training_state_path):
+            try:
+                logger.info(f"[Identity] Found existing checkpoint, attempting to resume...", __name__)
+                checkpoint_data = torch.load(training_state_path, map_location=self.device)
+                start_epoch = checkpoint_data.get('epoch', 0)
+                loss_history = checkpoint_data.get('loss_history', [])
+                avg_loss = checkpoint_data.get('loss', 0.0)
+                self.embedding_proj.load_state_dict(checkpoint_data['embedding_proj_state'])
+
+                # Load ControlNet
+                controlnet_path = os.path.join(checkpoint_path, "controlnet")
+                if os.path.exists(controlnet_path):
+                    self.controlnet = ControlNetModel.from_pretrained(
+                        controlnet_path,
+                        torch_dtype=torch.float16 if self.mixed_precision == "fp16" else torch.float32
+                    ).to(self.device)
+                    self.controlnet.train()
+
+                    # Reinitialize optimizer with loaded model parameters
+                    trainable_params = list(self.controlnet.parameters()) + list(self.embedding_proj.parameters())
+                    optimizer = torch.optim.AdamW(
+                        trainable_params,
+                        lr=learning_rate,
+                        weight_decay=1e-2
+                    )
+
+                    yield f"Resuming training from epoch {start_epoch}", {
+                        'status': 'Resuming',
+                        'resume_epoch': start_epoch,
+                        'previous_loss': avg_loss
+                    }
+                    logger.info(f"[Identity] Successfully resumed from epoch {start_epoch}", __name__)
+            except Exception as e:
+                logger.warn(f"[Identity] Failed to load checkpoint: {e}. Starting from scratch.", __name__)
+                start_epoch = 0
+                loss_history = []
+
+        for epoch in range(start_epoch, epochs):
+            # Check for stop signal at start of epoch
+            from watserface.training import core as training_core
+            if training_core._training_stopped:
+                logger.info(f"[Identity] Training stopped at epoch {epoch}", __name__)
+                self._save_checkpoint(checkpoint_path, epoch, avg_loss, loss_history)
+                yield f"Training stopped at epoch {epoch}. Checkpoint saved.", {
+                    'status': 'Stopped',
+                    'epoch': epoch,
+                    'checkpoint_saved': True
+                }
+                return
+
             epoch_loss = 0.0
             batch_count = 0
             epoch_start = time.time()
-            
+
             for batch in dataloader:
                 # Expect batch to be dict with 'image' and 'embedding'
                 if isinstance(batch, dict):
@@ -299,10 +398,16 @@ class IdentityControlNetTrainer:
                     identity_emb = identity_emb.to(self.device)
                 
                 batch_size = images.shape[0]
-                
+
                 # Encode images to latents
                 with torch.no_grad():
-                    latents = self.vae.encode(images).latent_dist.sample()
+                    # Convert images to same dtype as VAE to avoid dtype mismatch on MPS
+                    images_dtype = images.to(dtype=self.vae.dtype)
+                    # VAE expects [B, 3, H, W] in [-1, 1], we loaded [0, 1]
+                    # Scale to [-1, 1]
+                    images_dtype = 2.0 * images_dtype - 1.0
+                    
+                    latents = self.vae.encode(images_dtype).latent_dist.sample()
                     latents = latents * self.vae.config.scaling_factor
                 
                 # Sample noise
@@ -356,6 +461,18 @@ class IdentityControlNetTrainer:
 
                 # Granular progress updates
                 if batch_count % max(1, len(dataloader) // 20) == 0:
+                    # Check for stop signal during batch processing
+                    from watserface.training import core as training_core
+                    if training_core._training_stopped:
+                        logger.info(f"[Identity] Training stopped mid-epoch at {epoch}.{batch_count}", __name__)
+                        self._save_checkpoint(checkpoint_path, epoch, epoch_loss / max(batch_count, 1), loss_history)
+                        yield f"Training stopped during epoch {epoch + 1}. Checkpoint saved.", {
+                            'status': 'Stopped',
+                            'epoch': epoch,
+                            'checkpoint_saved': True
+                        }
+                        return
+
                     batch_pct = (batch_count / len(dataloader)) * 100
                     overall_pct = ((epoch * len(dataloader) + batch_count) / (epochs * len(dataloader))) * 100
                     current_loss = epoch_loss / batch_count
@@ -507,7 +624,8 @@ def train_identity_model(
     learning_rate: float = 1e-5,
     save_interval: int = 10,
     max_frames: int = 1000,
-    progress: Any = None
+    progress: Any = None,
+    save_dir: str = None
 ) -> Iterator[Tuple[str, Dict]]:
     """
     Compatibility wrapper for existing training/core.py interface.
@@ -515,11 +633,11 @@ def train_identity_model(
     Maintains backward compatibility while using the new diffusers-based trainer
     when available, falling back to SimSwap otherwise.
     """
+    if not save_dir:
+        save_dir = dataset_dir
+
     if DIFFUSERS_AVAILABLE and TRANSFORMERS_AVAILABLE:
         logger.info("[Identity] Using diffusers ControlNet trainer", __name__)
-        
-        # Create dataset and dataloader
-        from watserface.training.train_instantid import FaceDataset
         
         dataset = FaceDataset(dataset_dir, max_frames=max_frames)
         if len(dataset) == 0:
@@ -555,7 +673,7 @@ def train_identity_model(
             model_name=model_name,
             epochs=epochs,
             learning_rate=learning_rate,
-            save_dir=dataset_dir,
+            save_dir=save_dir,
             save_interval=save_interval
         )
     else:

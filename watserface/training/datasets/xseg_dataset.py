@@ -9,9 +9,10 @@ from typing import Dict, List, Tuple
 from watserface import logger
 
 class XSegDataset(Dataset):
-	def __init__(self, dataset_dir: str, transform=None):
+	def __init__(self, dataset_dir: str, transform=None, image_size: int = 256):
 		self.dataset_dir = dataset_dir
 		self.transform = transform
+		self.image_size = image_size
 		self.frames = sorted([f for f in os.listdir(dataset_dir) if f.endswith('.png') and not f.startswith('mask_')])
 		
 	def __len__(self):
@@ -41,10 +42,10 @@ class XSegDataset(Dataset):
 		if self.transform:
 			# Apply transforms (resize, normalize)
 			pass # Implement later or assume fixed size
-			
-		# Resize to 256x256 (standard XSeg)
-		image = cv2.resize(image, (256, 256))
-		mask = cv2.resize(mask, (256, 256), interpolation=cv2.INTER_NEAREST)
+
+		# Resize to specified image_size (standard XSeg uses 256)
+		image = cv2.resize(image, (self.image_size, self.image_size))
+		mask = cv2.resize(mask, (self.image_size, self.image_size), interpolation=cv2.INTER_NEAREST)
 		
 		# To Tensor
 		image = torch.from_numpy(image).permute(2, 0, 1).float() / 255.0

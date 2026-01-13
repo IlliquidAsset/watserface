@@ -186,15 +186,22 @@ class StudioOrchestrator:
         
         if is_video(self.state.target_path):
             from watserface.ffmpeg import extract_frames
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmpdir:
-                extract_frames(self.state.target_path, tmpdir, 1)
-                frame_path = os.path.join(tmpdir, '000001.jpg')
-                if os.path.exists(frame_path):
-                    frame = read_static_image(frame_path)
-                else:
-                    yield self.state.log('Could not extract frame from video'), {}
-                    return
+            from watserface.temp_helper import get_temp_directory_path, create_temp_directory, clear_temp_directory
+
+            create_temp_directory(self.state.target_path)
+            if not extract_frames(self.state.target_path, '640x480', 30.0, 0, 1):
+                yield self.state.log('Could not extract frame from video'), {}
+                return
+
+            temp_dir = get_temp_directory_path(self.state.target_path)
+            frame_path = os.path.join(temp_dir, '00000001.png')
+            if os.path.exists(frame_path):
+                frame = read_static_image(frame_path)
+                clear_temp_directory(self.state.target_path)
+            else:
+                yield self.state.log('Could not find extracted frame'), {}
+                clear_temp_directory(self.state.target_path)
+                return
         else:
             frame = read_static_image(self.state.target_path)
         
@@ -234,15 +241,23 @@ class StudioOrchestrator:
         
         if is_video(self.state.target_path):
             from watserface.ffmpeg import extract_frames
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmpdir:
-                extract_frames(self.state.target_path, tmpdir, 1, frame_number, frame_number)
-                frame_path = os.path.join(tmpdir, f'{frame_number:06d}.jpg')
-                if os.path.exists(frame_path):
-                    frame = read_static_image(frame_path)
-                else:
-                    yield self.state.log('Could not extract preview frame'), None
-                    return
+            from watserface.temp_helper import get_temp_directory_path, create_temp_directory, clear_temp_directory
+
+            create_temp_directory(self.state.target_path)
+            if not extract_frames(self.state.target_path, '640x480', 30.0, frame_number, frame_number + 1):
+                yield self.state.log('Could not extract preview frame'), None
+                return
+
+            temp_dir = get_temp_directory_path(self.state.target_path)
+            # When extracting a single frame, it's always saved as 00000001.png (first output frame)
+            frame_path = os.path.join(temp_dir, '00000001.png')
+            if os.path.exists(frame_path):
+                frame = read_static_image(frame_path)
+                clear_temp_directory(self.state.target_path)
+            else:
+                yield self.state.log('Could not find extracted preview frame'), None
+                clear_temp_directory(self.state.target_path)
+                return
         else:
             frame = read_static_image(self.state.target_path)
         

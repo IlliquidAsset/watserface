@@ -35,3 +35,8 @@ The codebase contains scaffolding for a high-fidelity occlusion handler intended
 ### 4. Known Quirks
 *   **MediaPipe Imports:** The `mediapipe` package structure varies between environments (pip vs conda vs docker). We rely on top-level imports and avoid deep imports like `mediapipe.python.solutions.face_mesh_connections` where possible.
 *   **Thread Safety:** `MEDIAPIPE_FACE_MESH` is global and not thread-safe. Access is protected by `watserface.face_landmarker.THREAD_LOCK`.
+
+### 5. Debugging & Logs
+*   **Persistent Logs:** The application maintains a persistent log file named `watserface.log` in the project root. 
+*   **Usage:** Agents should check this file to understand the context of recent failures or console messages without requiring the user to copy-paste.
+*   **Format:** Logs include timestamps and module tags, e.g., `[2026-01-13 10:00:00] [INFO] [CORE] Starting Identity Training...`
