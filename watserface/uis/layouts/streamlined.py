@@ -3,10 +3,21 @@ import gradio
 from watserface import state_manager
 from watserface.uis.components import about, common_options, execution, face_detector, face_landmarker, face_masker, face_selector, instant_runner, job_manager, job_runner, memory, output, output_options, processors, smart_preview, source, target, terminal, ui_workflow
 from watserface.uis.components import enhanced_source, enhanced_target, progress_tracker, help_system, error_handler
+from watserface.identity_profile import get_identity_manager
+from watserface.face_set import list_face_sets, get_face_set_manager
+from watserface.training.core import start_identity_training
 
 
 def pre_check() -> bool:
     return True
+
+
+def update_identity_status():
+    profiles = get_identity_manager().source_intelligence.list_profiles()
+    if profiles:
+        names = [p.name for p in profiles]
+        return f"Found {len(profiles)} identities: {', '.join(names[:5])}" + ("..." if len(names)>5 else "")
+    return "No identities yet"
 
 
 def render() -> gradio.Blocks:
@@ -59,6 +70,12 @@ def render() -> gradio.Blocks:
                             )
                     
                     with gradio.Column(scale=2):
+                        # Identity Status
+                        with gradio.Row():
+                            identity_status = gradio.Textbox(value=update_identity_status(), label="Identities Status", interactive=False)
+                            refresh_btn = gradio.Button("Refresh Identities")
+                            refresh_btn.click(update_identity_status, outputs=identity_status)
+
                         with gradio.Row():
                             with gradio.Column():
                                 enhanced_source.render()
@@ -240,21 +257,68 @@ def render() -> gradio.Blocks:
                         
                         # Training placeholder (to be implemented)
                         with gradio.Accordion("🎓 Model Training", open=False):
-                            gradio.Markdown(
-                                """
-                                ### Custom Model Training
+                            gradio.Markdown("### Custom Model Training")
+
+                            with gradio.Row():
+                                identity_choices = [""] + [p.id for p in get_identity_manager().source_intelligence.list_profiles()]
+                                identity_dropdown = gradio.Dropdown(choices=identity_choices, label="Resume Identity (Optional)")
                                 
-                                **Coming Soon**: Train custom face models with your own datasets.
+                                faceset_choices = [""] + list_face_sets()
+                                face_set_dropdown = gradio.Dropdown(choices=faceset_choices, label="Reuse FaceSet (Optional)")
+
+                            with gradio.Row():
+                                epochs_slider = gradio.Slider(minimum=10, maximum=1000, value=100, label="Epochs")
+                                batch_size_slider = gradio.Slider(minimum=1, maximum=16, value=4, label="Batch Size")
+                                learning_rate_slider = gradio.Slider(minimum=1e-6, maximum=1e-3, value=1e-4, label="Learning Rate")
+
+                            face_set_status = gradio.Textbox(value=f"Found {len(list_face_sets())} FaceSets", label="FaceSets Status", interactive=False)
+
+                            with gradio.Row():
+                                train_btn = gradio.Button("Start Training", variant="primary")
+                                cleanup_btn = gradio.Button("Cleanup Old Sessions")
+
+                            # Cleanup callback
+                            def cleanup_action():
+                                manager = get_face_set_manager()
+                                msg = manager.cleanup_old_face_sets()
+                                status = f"Found {len(manager.list_face_sets())} FaceSets"
+                                return msg + "\n" + status, status
+
+                            cleanup_output = gradio.Textbox(label="Cleanup Result", visible=True)
+                            cleanup_btn.click(cleanup_action, outputs=[cleanup_output, face_set_status])
+
+                            # Train callback
+                            def train_action(identity, faceset, epochs, batch, lr, progress=gradio.Progress()):
+                                import time
+                                model_name = identity
+                                if not model_name and faceset:
+                                    model_name = f"Identity_from_{faceset}"
                                 
-                                This feature will allow you to:
-                                - Upload training image sets
-                                - Configure training parameters
-                                - Monitor training progress
-                                - Manage trained models
-                                
-                                *Currently in development as part of Phase 4.*
-                                """
-                            )
+                                if not model_name:
+                                    # Fallback to generic name if only sources provided
+                                    source_files = state_manager.get_item('source_paths')
+                                    if source_files:
+                                        model_name = f"Identity_{int(time.time())}"
+                                    else:
+                                        yield "❌ Error: Please select an identity, a faceset, or upload source files."
+                                        return
+
+                                try:
+                                    source_files = state_manager.get_item('source_paths')
+
+                                    for status in start_identity_training(
+                                        model_name=model_name,
+                                        epochs=epochs,
+                                        face_set_id=faceset if faceset else None,
+                                        source_files=source_files if not faceset else None,
+                                        progress=progress
+                                    ):
+                                        yield status[0]
+                                except Exception as e:
+                                    yield f"Error: {str(e)}"
+
+                            train_info = gradio.Textbox(label="Training Info")
+                            train_btn.click(train_action, inputs=[identity_dropdown, face_set_dropdown, epochs_slider, batch_size_slider, learning_rate_slider], outputs=[train_info])
         
         # Register tab navigation components
         from watserface.uis.core import register_ui_component
