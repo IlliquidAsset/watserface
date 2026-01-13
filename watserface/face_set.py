@@ -564,6 +564,68 @@ class FaceSetManager:
         logger.info(f"✅ Cleaned up {deleted_count} unused Face Sets", __name__)
         return deleted_count
 
+    def cleanup_old_face_sets(self, max_age_days: int = 30, max_total_gb: float = 50.0) -> str:
+        """
+        Clean up Face Sets based on age and total storage usage.
+
+        Args:
+            max_age_days: Delete Face Sets older than this many days (based on last used or created).
+            max_total_gb: Maximum total size in GB. If exceeded, oldest Face Sets are deleted.
+
+        Returns:
+            Status message summarizing cleanup actions.
+        """
+        deleted_count_age = 0
+        deleted_count_size = 0
+
+        # 1. Cleanup by Age
+        cutoff = datetime.now().timestamp() - (max_age_days * 24 * 60 * 60)
+        all_face_sets = self.list_face_sets(sort_by='last_used')
+
+        # We need oldest first for cleanup loop, list_face_sets returns newest first
+        all_face_sets.reverse()
+
+        remaining_face_sets = []
+
+        for fs in all_face_sets:
+            fs_timestamp = datetime.fromisoformat(fs.last_used or fs.created_at).timestamp()
+            if fs_timestamp < cutoff:
+                if self.delete_face_set(fs.id):
+                    deleted_count_age += 1
+            else:
+                remaining_face_sets.append(fs)
+
+        # 2. Cleanup by Size
+        # Calculate total size
+        total_size_bytes = 0
+        face_set_sizes = {}
+
+        for fs in remaining_face_sets:
+            fs_dir = self.face_sets_dir / fs.id
+            if fs_dir.exists():
+                # Calculate size recursively
+                size = sum(f.stat().st_size for f in fs_dir.rglob('*') if f.is_file())
+                face_set_sizes[fs.id] = size
+                total_size_bytes += size
+
+        total_size_gb = total_size_bytes / (1024**3)
+        initial_size_gb = total_size_gb
+
+        if total_size_gb > max_total_gb:
+            # remaining_face_sets is already sorted by last_used/created_at (oldest first)
+
+            for fs in remaining_face_sets:
+                if total_size_gb <= max_total_gb:
+                    break
+
+                # Delete oldest
+                size = face_set_sizes.get(fs.id, 0)
+                if self.delete_face_set(fs.id):
+                    total_size_gb -= (size / (1024**3))
+                    deleted_count_size += 1
+
+        return f"Cleanup Complete: Deleted {deleted_count_age} expired and {deleted_count_size} for space. Size: {initial_size_gb:.2f}GB -> {total_size_gb:.2f}GB"
+
     # ==================== EXPORT/IMPORT OPERATIONS ====================
 
     def export_face_set(self, face_set_id: str, export_path: Optional[str] = None) -> Optional[str]:
@@ -882,3 +944,9 @@ def get_face_set_manager(config: Optional[FaceSetConfig] = None) -> FaceSetManag
             logger.error(f"Failed to run migration: {e}", __name__)
 
     return _face_set_manager_instance
+
+
+def list_face_sets() -> List[str]:
+    """Global helper to list face set IDs for UI"""
+    manager = get_face_set_manager()
+    return [fs.id for fs in manager.list_face_sets()]

@@ -68,6 +68,14 @@ def start_identity_training(
 		dataset_path = None
 		face_set_manager = get_face_set_manager()
 
+		# Check if profile exists and has face_set_id (auto-reuse)
+		if not face_set_id and not source_files and model_name:
+			profile_id = model_name.lower().replace(' ', '_')
+			existing_profile = identity_profile.get_identity_manager().source_intelligence.load_profile(profile_id)
+			if existing_profile and existing_profile.face_set_id:
+				face_set_id = existing_profile.face_set_id
+				logger.info(f"Auto-detected Face Set from profile: {face_set_id}", __name__)
+
 		if face_set_id:
 			# MODE 1: Use existing Face Set
 			logger.info(f"Using Face Set: {face_set_id}", __name__)

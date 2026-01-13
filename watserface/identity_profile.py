@@ -63,6 +63,7 @@ class IdentityProfile:
     is_ephemeral: bool = True
     last_used: Optional[str] = None
     source_count: int = 0
+    face_set_id: Optional[str] = None
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'IdentityProfile':
@@ -359,7 +360,8 @@ class SourceIntelligence:
         self, 
         source_paths: List[str], 
         profile_name: Optional[str] = None,
-        save_persistent: bool = False
+        save_persistent: bool = False,
+        face_set_id: Optional[str] = None
     ) -> IdentityProfile:
         """Create a Quick Identity Profile from source images/videos"""
         
@@ -414,7 +416,8 @@ class SourceIntelligence:
             embedding_std=embedding_std.tolist(),
             quality_stats=quality_stats,
             is_ephemeral=not save_persistent,
-            source_count=len(source_paths)
+            source_count=len(source_paths),
+            face_set_id=face_set_id
         )
         
         # Save if persistent
