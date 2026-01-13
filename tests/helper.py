@@ -14,7 +14,7 @@ def get_test_job_file(file_path : str, job_status : JobStatus) -> str:
 
 
 def get_test_jobs_directory() -> str:
-	return os.path.join(tempfile.gettempdir(), 'facefusion-test-jobs')
+	return os.path.join(tempfile.gettempdir(), 'watserface-test-jobs')
 
 
 def get_test_example_file(file_path : str) -> str:
@@ -22,7 +22,7 @@ def get_test_example_file(file_path : str) -> str:
 
 
 def get_test_examples_directory() -> str:
-	return os.path.join(tempfile.gettempdir(), 'facefusion-test-examples')
+	return os.path.join(tempfile.gettempdir(), 'watserface-test-examples')
 
 
 def is_test_output_file(file_path : str) -> bool:
@@ -34,7 +34,7 @@ def get_test_output_file(file_path : str) -> str:
 
 
 def get_test_outputs_directory() -> str:
-	return os.path.join(tempfile.gettempdir(), 'facefusion-test-outputs')
+	return os.path.join(tempfile.gettempdir(), 'watserface-test-outputs')
 
 
 def prepare_test_output_directory() -> bool:

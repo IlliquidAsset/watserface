@@ -19,7 +19,7 @@ logging.basicConfig(
     ]
 )
 
-logger = logging.getLogger('FACEFUSION_DEBUG')
+logger = logging.getLogger('WATSERFACE_DEBUG')
 
 def log_system_info():
     """Log system information for debugging"""
@@ -69,7 +69,7 @@ def install_with_logging(packages, description):
 
 def main():
     """Enhanced main function with comprehensive logging"""
-    logger.info("🚀 Starting FaceFusion with Enhanced Debugging")
+    logger.info("🚀 Starting WatserFace with Enhanced Debugging")
     log_system_info()
     
     try:
@@ -154,7 +154,7 @@ def main():
         logger.info("🚀 Step 5: Launching FaceFusion with Training Tab")
         try:
             launch_command = [
-                sys.executable, "facefusion.py", "run",
+                sys.executable, "watserface.py", "run",
                 "--execution-providers", "cuda",
                 "--ui-layouts", "swap", "training"
             ]

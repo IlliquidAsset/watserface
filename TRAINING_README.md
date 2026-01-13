@@ -17,13 +17,13 @@ FaceFusion now includes a comprehensive training tab that allows you to:
 ### 1. Launch with Training Tab
 
 ```bash
-python facefusion.py run --ui-layouts training
+python watserface.py run --ui-layouts training
 ```
 
 Or use both default and training tabs:
 
 ```bash
-python facefusion.py run --ui-layouts default training
+python watserface.py run --ui-layouts default training
 ```
 
 ### 2. Install Training Dependencies

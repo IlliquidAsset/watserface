@@ -80,7 +80,7 @@ If a score fails, switch to **2DFAN4** (for landmarks) or **alt detector** (if a
 
 ---
 
-## Config keys (extend `facefusion.ini`)
+## Config keys (extend `watserface.ini`)
 
 ```ini
 [detector]
@@ -111,11 +111,11 @@ max_latency_ms = 50
 
 ## Pipeline hooks (where to wire)
 
-* `facefusion/face_detector.py`: add registry + factory, thresholds, retry path.
-* `facefusion/face_landmarker.py`: expose both FAN variants; implement pose estimation.
-* `facefusion/face_masker.py`: accept landmark set; optional seg‑refine step.
-* `facefusion/uis/components/face_detector.py` & `face_landmarker.py`: add dropdowns + “Auto” badges.
-* `facefusion/inference_manager.py`: provider capabilities (CPU/GPU), model warm‑up.
+* `watserface/face_detector.py`: add registry + factory, thresholds, retry path.
+* `watserface/face_landmarker.py`: expose both FAN variants; implement pose estimation.
+* `watserface/face_masker.py`: accept landmark set; optional seg‑refine step.
+* `watserface/uis/components/face_detector.py` & `face_landmarker.py`: add dropdowns + "Auto" badges.
+* `watserface/inference_manager.py`: provider capabilities (CPU/GPU), model warm‑up.
 
 ---
 

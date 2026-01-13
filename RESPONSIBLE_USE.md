@@ -67,7 +67,7 @@ See LICENSE.md for complete restrictions and legal requirements.
 ### Reporting Misuse
 
 If you encounter misuse of WatserFace, please report to:
-- **GitHub Issues**: https://github.com/IlliquidAsset/facefusion/issues
+- **GitHub Issues**: https://github.com/IlliquidAsset/watserface/issues
 - **Email**: [Maintainer contact - to be added]
 
 ### Legal Disclaimers

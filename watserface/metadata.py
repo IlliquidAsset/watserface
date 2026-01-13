@@ -7,7 +7,7 @@ METADATA =\
 	'version': '1.0.0',
 	'license': 'OpenRAIL-AS',
 	'author': 'IlliquidAsset (based on FaceFusion by Henry Ruhs)',
-	'url': 'https://github.com/IlliquidAsset/facefusion'
+	'url': 'https://github.com/IlliquidAsset/watserface'
 }
 
 
