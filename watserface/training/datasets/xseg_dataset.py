@@ -4,12 +4,19 @@ import json
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Callable, Optional
 
 from watserface import logger
 
 class XSegDataset(Dataset):
-	def __init__(self, dataset_dir: str, transform=None, image_size: int = 256):
+	def __init__(self, dataset_dir: str, transform: Optional[Callable] = None, image_size: int = 256):
+		"""
+		Args:
+			dataset_dir: Directory containing images and masks.
+			transform: Optional callable that accepts (image, mask) and returns (image, mask).
+					   Both input and output should be numpy arrays.
+			image_size: Target size for the images.
+		"""
 		self.dataset_dir = dataset_dir
 		self.transform = transform
 		self.image_size = image_size
@@ -40,8 +47,8 @@ class XSegDataset(Dataset):
 
 		# Preprocess
 		if self.transform:
-			# Apply transforms (resize, normalize)
-			pass # Implement later or assume fixed size
+			# Apply transforms (augmentations, etc.)
+			image, mask = self.transform(image, mask)
 
 		# Resize to specified image_size (standard XSeg uses 256)
 		image = cv2.resize(image, (self.image_size, self.image_size))
