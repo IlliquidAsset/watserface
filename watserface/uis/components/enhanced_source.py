@@ -1,9 +1,10 @@
+import os
 from typing import List, Optional, Tuple
 import gradio
 
 from watserface import state_manager, wording, logger
 from watserface.common_helper import get_first
-from watserface.filesystem import filter_audio_paths, filter_image_paths, has_audio, has_image
+from watserface.filesystem import filter_audio_paths, filter_image_paths, has_audio, has_image, is_image
 from watserface.uis.core import register_ui_component
 from watserface.uis.types import File
 from watserface.identity_profile import get_identity_manager
@@ -338,9 +339,19 @@ def update_with_profile(profile_id: str) -> Tuple[gradio.Audio, gradio.Image, st
             </div>
             """
             
+        # Determine thumbnail path
+        thumbnail_path = None
+        if profile.thumbnail_path and os.path.exists(profile.thumbnail_path):
+            thumbnail_path = profile.thumbnail_path
+        elif profile.source_files and len(profile.source_files) > 0:
+            # Fallback to first source file if it's an image
+            first_source = profile.source_files[0]
+            if is_image(first_source) and os.path.exists(first_source):
+                thumbnail_path = first_source
+
         return (
             gradio.Audio(value=None, visible=False),
-            gradio.Image(value=None, visible=False), # TODO: Show thumbnail if available
+            gradio.Image(value=thumbnail_path, visible=thumbnail_path is not None),
             status_msg,
             mode_chip_html,
             profile_info
