@@ -7,3 +7,7 @@
 ## 2024-05-23 - Platform Check Optimization
 **Learning:** `platform.system()` calls are relatively expensive (~240ns) and should be cached if used frequently in loops or hot paths. Since the OS is static during runtime, this value should be cached at module level. Module-level caching provides a significant speedup (~5x).
 **Action:** Use module-level constants (cached boolean results) for static system values instead of repeated function calls or string comparisons.
+
+## 2025-05-23 - FaceDataset In-Memory Caching
+**Learning:** The `FaceDataset` used for InstantID training repeatedly loaded and processed the same small set of images (max 1000) from disk every epoch. This I/O bound operation made training significantly slower (1.78s vs 0.11s for 10 epochs). For small datasets that fit in RAM, eager caching is a massive win.
+**Action:** Default to in-memory caching for datasets known to be small (< 2GB) to eliminate I/O overhead.

@@ -86,12 +86,13 @@ class IdentityGenerator(nn.Module):
 
 # Dataset
 class FaceDataset(Dataset):
-	def __init__(self, dataset_dir, max_frames=1000):
+	def __init__(self, dataset_dir, max_frames=1000, cache_images=True):
 		"""
 		Args:
 			dataset_dir: Directory containing extracted frames
 			max_frames: Maximum number of frames to use for training
 		                    (samples uniformly if more frames exist)
+			cache_images: Whether to cache images in memory (faster, higher memory usage)
 		"""
 		all_files = sorted([os.path.join(dataset_dir, f) for f in os.listdir(dataset_dir) if f.endswith('.png')])
 
@@ -104,14 +105,47 @@ class FaceDataset(Dataset):
 			self.files = all_files
 			logger.info(f"Using all {len(all_files)} frames for training", __name__)
 
+		self.cache_images = cache_images
+		self.cached_data = None
+
+		if self.cache_images:
+			self._cache_all_images()
+
+	def _cache_all_images(self):
+		"""Load all images into memory to speed up training."""
+		self.cached_data = []
+		logger.info(f"Caching {len(self.files)} images in memory...", __name__)
+
+		success_count = 0
+		for file_path in self.files:
+			try:
+				img = self._load_and_process_image(file_path)
+				self.cached_data.append(img)
+				success_count += 1
+			except Exception as e:
+				logger.warn(f"Failed to load image {file_path}: {e}", __name__)
+				# Fallback: append a zero tensor to maintain index alignment
+				self.cached_data.append(torch.zeros(3, 128, 128))
+
+		logger.info(f"Image caching complete. Cached {success_count}/{len(self.files)} images.", __name__)
+
+	def _load_and_process_image(self, file_path):
+		"""Load an image from disk and process it into a tensor."""
+		img = cv2.imread(file_path)
+		if img is None:
+			raise ValueError(f"Could not read image: {file_path}")
+		img = cv2.resize(img, (128, 128))  # Standard SimSwap size
+		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+		return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+
 	def __len__(self):
 		return len(self.files)
 
 	def __getitem__(self, idx):
-		img = cv2.imread(self.files[idx])
-		img = cv2.resize(img, (128, 128))  # Standard SimSwap size
-		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-		return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+		if self.cache_images and self.cached_data is not None:
+			return self.cached_data[idx]
+
+		return self._load_and_process_image(self.files[idx])
 
 
 def train_instantid_model(dataset_dir: str, model_name: str, epochs: int, batch_size: int, learning_rate: float, save_interval: int, max_frames: int = 1000) -> Iterator[Tuple[str, Dict]]:
