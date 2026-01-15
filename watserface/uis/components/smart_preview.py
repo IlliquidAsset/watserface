@@ -30,7 +30,7 @@ def render() -> None:
                     for i in range(len(preset_choices))],
             value="balanced",
             label="🎯 Quality Preset",
-            info="Choose your preferred balance of speed vs quality",
+            info="Choose your preferred balance of speed vs quality. This setting applies to the final output.",
             elem_id="smart_preview_selector"
         )
     
@@ -51,7 +51,7 @@ def render() -> None:
                 interactive=False
             )
             select_fast_button = gradio.Button(
-                value="Select Fast",
+                value="Select Fast 🚀",
                 variant="secondary",
                 size="sm"
             )
@@ -63,7 +63,7 @@ def render() -> None:
                 interactive=False
             )
             select_balanced_button = gradio.Button(
-                value="Select Balanced",
+                value="Select Balanced ⚖️",
                 variant="secondary", 
                 size="sm"
             )
@@ -75,7 +75,7 @@ def render() -> None:
                 interactive=False
             )
             select_quality_button = gradio.Button(
-                value="Select Quality",
+                value="Select Quality ✨",
                 variant="secondary",
                 size="sm"
             )
@@ -83,7 +83,7 @@ def render() -> None:
     # Processing status
     preview_status = gradio.Textbox(
         label="Preview Status",
-        value="Ready to generate previews",
+        value="Ready to generate previews. Click 'Generate Preview Options' to start.",
         interactive=False,
         lines=1
     )
@@ -140,9 +140,14 @@ def listen() -> None:
     select_fast_button = get_ui_component('smart_preview_select_fast')
     select_balanced_button = get_ui_component('smart_preview_select_balanced')
     select_quality_button = get_ui_component('smart_preview_select_quality')
+
+    # Preview images
+    preview_fast = get_ui_component('smart_preview_fast')
+    preview_balanced = get_ui_component('smart_preview_balanced')
+    preview_quality = get_ui_component('smart_preview_quality')
     
     if not all([preset_selector, generate_button, preview_results, preview_status, 
-                advanced_toggle, advanced_settings]):
+                advanced_toggle, advanced_settings, preview_fast, preview_balanced, preview_quality]):
         return
     
     # Handle preset selection changes
