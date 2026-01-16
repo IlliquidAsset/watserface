@@ -11,3 +11,7 @@
 ## 2025-05-23 - FaceDataset In-Memory Caching
 **Learning:** The `FaceDataset` used for InstantID training repeatedly loaded and processed the same small set of images (max 1000) from disk every epoch. This I/O bound operation made training significantly slower (1.78s vs 0.11s for 10 epochs). For small datasets that fit in RAM, eager caching is a massive win.
 **Action:** Default to in-memory caching for datasets known to be small (< 2GB) to eliminate I/O overhead.
+
+## 2024-05-23 - Scalar Math Optimization
+**Learning:** Using `numpy` functions (`arctan2`, `degrees`, `linspace`, `argmin`) for simple scalar calculations incurs significant overhead (e.g., array allocation, dispatch). Pure Python `math` operations are much faster (~6-7x) for single-value logic.
+**Action:** Prefer `math` module over `numpy` when processing individual scalars, especially in hot loops like per-face angle estimation.
