@@ -22,6 +22,11 @@ def render() -> None:
 	is_target_video = is_video(state_manager.get_item('target_path'))
 	TARGET_FILE = gradio.File(
 		label = wording.get('uis.target_file'),
+		file_types =
+		[
+			'image',
+			'video'
+		],
 		value = state_manager.get_item('target_path') if is_target_image or is_target_video else None
 	)
 	target_image_options : ComponentOptions =\
