@@ -86,12 +86,13 @@ class IdentityGenerator(nn.Module):
 
 # Dataset
 class FaceDataset(Dataset):
-	def __init__(self, dataset_dir, max_frames=1000):
+	def __init__(self, dataset_dir, max_frames=1000, cache_images=True):
 		"""
 		Args:
 			dataset_dir: Directory containing extracted frames
 			max_frames: Maximum number of frames to use for training
 		                    (samples uniformly if more frames exist)
+			cache_images: Whether to cache images in memory (default: True)
 		"""
 		all_files = sorted([os.path.join(dataset_dir, f) for f in os.listdir(dataset_dir) if f.endswith('.png')])
 
@@ -104,13 +105,28 @@ class FaceDataset(Dataset):
 			self.files = all_files
 			logger.info(f"Using all {len(all_files)} frames for training", __name__)
 
+		self.cache_images = cache_images
+		self.cached_images = []
+
+		if self.cache_images:
+			logger.info(f"Caching {len(self.files)} images in memory...", __name__)
+			for f in self.files:
+				self.cached_images.append(self._load_image(f))
+
+	def _load_image(self, path):
+		img = cv2.imread(path)
+		img = cv2.resize(img, (128, 128))  # Standard SimSwap size
+		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+		return img
+
 	def __len__(self):
 		return len(self.files)
 
 	def __getitem__(self, idx):
-		img = cv2.imread(self.files[idx])
-		img = cv2.resize(img, (128, 128))  # Standard SimSwap size
-		img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+		if self.cache_images:
+			img = self.cached_images[idx]
+		else:
+			img = self._load_image(self.files[idx])
 		return torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
 
 
