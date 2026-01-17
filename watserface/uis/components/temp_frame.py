@@ -16,6 +16,7 @@ def render() -> None:
 
 	TEMP_FRAME_FORMAT_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.temp_frame_format_dropdown'),
+		info = wording.get('help.temp_frame_format'),
 		choices = watserface.choices.temp_frame_formats,
 		value = state_manager.get_item('temp_frame_format'),
 		visible = is_video(state_manager.get_item('target_path'))
