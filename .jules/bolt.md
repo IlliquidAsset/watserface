@@ -15,3 +15,7 @@
 ## 2024-05-23 - Scalar Math Optimization
 **Learning:** Using `numpy` functions (`arctan2`, `degrees`, `linspace`, `argmin`) for simple scalar calculations incurs significant overhead (e.g., array allocation, dispatch). Pure Python `math` operations are much faster (~6-7x) for single-value logic.
 **Action:** Prefer `math` module over `numpy` when processing individual scalars, especially in hot loops like per-face angle estimation.
+
+## 2025-05-23 - Numpy Array Allocation in Hot Loops
+**Learning:** Creating constant numpy arrays (like ImageNet mean/std) inside a hot loop (inference per frame) causes unnecessary allocation and garbage collection. Also, `numpy.ones(shape).astype(float32)` allocates double the memory (float64 then float32) compared to `numpy.ones(shape, dtype=float32)`.
+**Action:** Extract constant arrays to module level and use `dtype` argument during array creation.
