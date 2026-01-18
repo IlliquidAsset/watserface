@@ -36,7 +36,7 @@ def render() -> None:
 			)
 			INSTANT_RUNNER_STOP_BUTTON = gradio.Button(
 				value = wording.get('uis.stop_button'),
-				variant = 'primary',
+				variant = 'stop',
 				size = 'sm',
 				visible = False
 			)
