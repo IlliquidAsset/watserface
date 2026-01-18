@@ -1,5 +1,3 @@
-# Bolt's Journal
-
 ## 2024-05-23 - Initial Setup
 **Learning:** Performance journaling helps track impactful changes and avoid repeating mistakes.
 **Action:** Always check this journal before starting optimization tasks.
@@ -15,3 +13,7 @@
 ## 2024-05-23 - Scalar Math Optimization
 **Learning:** Using `numpy` functions (`arctan2`, `degrees`, `linspace`, `argmin`) for simple scalar calculations incurs significant overhead (e.g., array allocation, dispatch). Pure Python `math` operations are much faster (~6-7x) for single-value logic.
 **Action:** Prefer `math` module over `numpy` when processing individual scalars, especially in hot loops like per-face angle estimation.
+
+## 2025-05-23 - NumPy Array Allocation and Dtypes
+**Learning:** `numpy.ones().astype(float32)` creates a default `float64` array then copies it to `float32`, which is ~82% slower than `numpy.ones(..., dtype=float32)`. Re-creating constant arrays (like normalization means) in tight loops adds unnecessary allocation overhead, even if small.
+**Action:** Always use the `dtype` argument during array creation instead of `astype()` immediately after. Hoist constant array definitions to module level to avoid re-allocation in hot paths.

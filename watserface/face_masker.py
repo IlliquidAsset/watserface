@@ -12,6 +12,10 @@ from watserface.thread_helper import conditional_thread_semaphore
 from watserface.types import DownloadScope, DownloadSet, FaceLandmark68, FaceMaskArea, FaceMaskRegion, InferencePool, Mask, ModelSet, Padding, VisionFrame
 
 
+IMAGENET_MEAN = numpy.array([ 0.485, 0.456, 0.406 ], dtype = numpy.float32)
+IMAGENET_STD = numpy.array([ 0.229, 0.224, 0.225 ], dtype = numpy.float32)
+
+
 @lru_cache(maxsize = None)
 def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 	return\
@@ -159,7 +163,7 @@ def create_box_mask(crop_vision_frame : VisionFrame, face_mask_blur : float, fac
 	crop_size = crop_vision_frame.shape[:2][::-1]
 	blur_amount = int(crop_size[0] * 0.5 * face_mask_blur)
 	blur_area = max(blur_amount // 2, 1)
-	box_mask : Mask = numpy.ones(crop_size).astype(numpy.float32)
+	box_mask : Mask = numpy.ones(crop_size, dtype = numpy.float32)
 	box_mask[:max(blur_area, int(crop_size[1] * face_mask_padding[0] / 100)), :] = 0
 	box_mask[-max(blur_area, int(crop_size[1] * face_mask_padding[2] / 100)):, :] = 0
 	box_mask[:, :max(blur_area, int(crop_size[0] * face_mask_padding[3] / 100))] = 0
@@ -192,7 +196,7 @@ def create_area_mask(crop_vision_frame : VisionFrame, face_landmark_68 : FaceLan
 			landmark_points.extend(watserface.choices.face_mask_area_set.get(face_mask_area))
 
 	convex_hull = cv2.convexHull(face_landmark_68[landmark_points].astype(numpy.int32))
-	area_mask = numpy.zeros(crop_size).astype(numpy.float32)
+	area_mask = numpy.zeros(crop_size, dtype = numpy.float32)
 	cv2.fillConvexPoly(area_mask, convex_hull, 1.0) # type: ignore[call-overload]
 	area_mask = (cv2.GaussianBlur(area_mask.clip(0, 1), (0, 0), 5).clip(0.5, 1) - 0.5) * 2
 	return area_mask
@@ -203,8 +207,8 @@ def create_region_mask(crop_vision_frame : VisionFrame, face_mask_regions : List
 	model_size = create_static_model_set('full').get(model_name).get('size')
 	prepare_vision_frame = cv2.resize(crop_vision_frame, model_size)
 	prepare_vision_frame = prepare_vision_frame[:, :, ::-1].astype(numpy.float32) / 255.0
-	prepare_vision_frame = numpy.subtract(prepare_vision_frame, numpy.array([ 0.485, 0.456, 0.406 ]).astype(numpy.float32))
-	prepare_vision_frame = numpy.divide(prepare_vision_frame, numpy.array([ 0.229, 0.224, 0.225 ]).astype(numpy.float32))
+	prepare_vision_frame = numpy.subtract(prepare_vision_frame, IMAGENET_MEAN)
+	prepare_vision_frame = numpy.divide(prepare_vision_frame, IMAGENET_STD)
 	prepare_vision_frame = numpy.expand_dims(prepare_vision_frame, axis = 0)
 	prepare_vision_frame = prepare_vision_frame.transpose(0, 3, 1, 2)
 	region_mask = forward_parse_face(prepare_vision_frame)
