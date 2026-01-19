@@ -12,6 +12,10 @@ from watserface.thread_helper import conditional_thread_semaphore
 from watserface.types import DownloadScope, DownloadSet, FaceLandmark68, FaceMaskArea, FaceMaskRegion, InferencePool, Mask, ModelSet, Padding, VisionFrame
 
 
+IMAGENET_MEAN = numpy.array([ 0.485, 0.456, 0.406 ], dtype = numpy.float32)
+IMAGENET_STD = numpy.array([ 0.229, 0.224, 0.225 ], dtype = numpy.float32)
+
+
 @lru_cache(maxsize = None)
 def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 	return\
@@ -203,8 +207,8 @@ def create_region_mask(crop_vision_frame : VisionFrame, face_mask_regions : List
 	model_size = create_static_model_set('full').get(model_name).get('size')
 	prepare_vision_frame = cv2.resize(crop_vision_frame, model_size)
 	prepare_vision_frame = prepare_vision_frame[:, :, ::-1].astype(numpy.float32) / 255.0
-	prepare_vision_frame = numpy.subtract(prepare_vision_frame, numpy.array([ 0.485, 0.456, 0.406 ]).astype(numpy.float32))
-	prepare_vision_frame = numpy.divide(prepare_vision_frame, numpy.array([ 0.229, 0.224, 0.225 ]).astype(numpy.float32))
+	prepare_vision_frame = numpy.subtract(prepare_vision_frame, IMAGENET_MEAN)
+	prepare_vision_frame = numpy.divide(prepare_vision_frame, IMAGENET_STD)
 	prepare_vision_frame = numpy.expand_dims(prepare_vision_frame, axis = 0)
 	prepare_vision_frame = prepare_vision_frame.transpose(0, 3, 1, 2)
 	region_mask = forward_parse_face(prepare_vision_frame)
