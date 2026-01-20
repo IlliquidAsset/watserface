@@ -65,6 +65,7 @@ def render() -> None:
 	)
 	WEBCAM_STOP_BUTTON = gradio.Button(
 		value = wording.get('uis.stop_button'),
+		variant = 'stop',
 		size = 'sm'
 	)
 
