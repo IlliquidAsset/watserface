@@ -163,7 +163,7 @@ def create_box_mask(crop_vision_frame : VisionFrame, face_mask_blur : float, fac
 	crop_size = crop_vision_frame.shape[:2][::-1]
 	blur_amount = int(crop_size[0] * 0.5 * face_mask_blur)
 	blur_area = max(blur_amount // 2, 1)
-	box_mask : Mask = numpy.ones(crop_size).astype(numpy.float32)
+	box_mask : Mask = numpy.ones(crop_size, dtype = numpy.float32)
 	box_mask[:max(blur_area, int(crop_size[1] * face_mask_padding[0] / 100)), :] = 0
 	box_mask[-max(blur_area, int(crop_size[1] * face_mask_padding[2] / 100)):, :] = 0
 	box_mask[:, :max(blur_area, int(crop_size[0] * face_mask_padding[3] / 100))] = 0
@@ -196,7 +196,7 @@ def create_area_mask(crop_vision_frame : VisionFrame, face_landmark_68 : FaceLan
 			landmark_points.extend(watserface.choices.face_mask_area_set.get(face_mask_area))
 
 	convex_hull = cv2.convexHull(face_landmark_68[landmark_points].astype(numpy.int32))
-	area_mask = numpy.zeros(crop_size).astype(numpy.float32)
+	area_mask = numpy.zeros(crop_size, dtype = numpy.float32)
 	cv2.fillConvexPoly(area_mask, convex_hull, 1.0) # type: ignore[call-overload]
 	area_mask = (cv2.GaussianBlur(area_mask.clip(0, 1), (0, 0), 5).clip(0.5, 1) - 0.5) * 2
 	return area_mask
