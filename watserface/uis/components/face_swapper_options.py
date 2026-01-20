@@ -64,6 +64,7 @@ def render() -> None:
 	with gradio.Row():
 		FACE_SWAPPER_MODEL_DROPDOWN = gradio.Dropdown(
 			label = wording.get('uis.face_swapper_model_dropdown'),
+			info = wording.get('help.face_swapper_model'),
 			choices = available_models,
 			value = current_model,
 			visible = has_face_swapper,
@@ -78,6 +79,7 @@ def render() -> None:
 		)
 	FACE_SWAPPER_PIXEL_BOOST_DROPDOWN = gradio.Dropdown(
 		label = wording.get('uis.face_swapper_pixel_boost_dropdown'),
+		info = wording.get('help.face_swapper_pixel_boost'),
 		choices = processors_choices.face_swapper_set.get(state_manager.get_item('face_swapper_model')),
 		value = state_manager.get_item('face_swapper_pixel_boost'),
 		visible = has_face_swapper
