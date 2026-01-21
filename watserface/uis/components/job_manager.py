@@ -36,16 +36,19 @@ def render() -> None:
 		with gradio.Column(visible = is_job_manager) as JOB_MANAGER_WRAPPER:
 			JOB_MANAGER_JOB_ACTION_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.job_manager_job_action_dropdown'),
+				info = wording.get('help.job_manager_job_action'),
 				choices = uis_choices.job_manager_actions,
 				value = get_first(uis_choices.job_manager_actions)
 			)
 			JOB_MANAGER_JOB_ID_TEXTBOX = gradio.Textbox(
 				label = wording.get('uis.job_manager_job_id_dropdown'),
+				info = wording.get('help.job_manager_job_id'),
 				max_lines = 1,
 				interactive = True
 			)
 			JOB_MANAGER_JOB_ID_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.job_manager_job_id_dropdown'),
+				info = wording.get('help.job_manager_job_id'),
 				choices = drafted_job_ids,
 				value = get_last(drafted_job_ids),
 				interactive = True,
@@ -53,6 +56,7 @@ def render() -> None:
 			)
 			JOB_MANAGER_STEP_INDEX_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.job_manager_step_index_dropdown'),
+				info = wording.get('help.job_manager_step_index'),
 				choices = [ 'none' ],
 				value = 'none',
 				interactive = True,

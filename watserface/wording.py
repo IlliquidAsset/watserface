@@ -218,6 +218,9 @@ WORDING : Dict[str, Any] =\
 		'job_status': 'specify the job status',
 		'step_index': 'specify the step index',
 		# job manager
+		'job_manager_job_action': 'choose the action to perform on the job',
+		'job_manager_job_id': 'choose the job id',
+		'job_manager_step_index': 'choose the step index',
 		'job_list': 'list jobs by status',
 		'job_create': 'create a drafted job',
 		'job_submit': 'submit a drafted job to become a queued job',
@@ -232,7 +235,9 @@ WORDING : Dict[str, Any] =\
 		'job_run': 'run a queued job',
 		'job_run_all': 'run all queued jobs',
 		'job_retry': 'retry a failed job',
-		'job_retry_all': 'retry all failed jobs'
+		'job_retry_all': 'retry all failed jobs',
+		'job_runner_job_action': 'choose the action to perform on the job',
+		'job_runner_job_id': 'choose the job id',
 	},
 	'about':
 	{

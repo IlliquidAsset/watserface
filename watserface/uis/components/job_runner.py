@@ -34,11 +34,13 @@ def render() -> None:
 		with gradio.Column(visible = is_job_runner) as JOB_RUNNER_WRAPPER:
 			JOB_RUNNER_JOB_ACTION_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.job_runner_job_action_dropdown'),
+				info = wording.get('help.job_runner_job_action'),
 				choices = uis_choices.job_runner_actions,
 				value = get_first(uis_choices.job_runner_actions)
 			)
 			JOB_RUNNER_JOB_ID_DROPDOWN = gradio.Dropdown(
 				label = wording.get('uis.job_runner_job_id_dropdown'),
+				info = wording.get('help.job_runner_job_id'),
 				choices = queued_job_ids,
 				value = get_last(queued_job_ids)
 			)
