@@ -9,6 +9,50 @@ venv/
 *.pyc
 models/
 previewtest/
-.opencode/
+# OpenCode - exclude everything except project-specific instructions
+.opencode/*
+!.opencode/project-instructions.md
 oh-my-opencode.json
 *.log
+
+# Media files - exclude ALL except UI assets
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.m4v
+*.flv
+*.wmv
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.bmp
+*.tiff
+*.tif
+*.svg
+*.ico
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.aac
+*.ogg
+*.opus
+*.wma
+
+# Allow UI assets
+!watserface/uis/assets/**/*.png
+!watserface/uis/assets/**/*.jpg
+!watserface/uis/assets/**/*.jpeg
+!watserface/uis/assets/**/*.svg
+!watserface/uis/assets/**/*.gif
+!watserface/uis/assets/**/*.ico
+
+# Output directories
+output/
+test_output/
+temp/
+tmp/
