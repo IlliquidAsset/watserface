@@ -3,6 +3,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 import time
 
+from watserface import logger
+
 
 class StudioPhase(Enum):
     IDLE = 'idle'
@@ -68,6 +70,8 @@ class StudioState:
         entry = f'[{timestamp}] {message}'
         self.log_history.append(entry)
         self.updated_at = time.time()
+        # Also log to system logger so it appears in console/file
+        logger.info(message, __name__)
         return entry
     
     def get_identity(self, name: str) -> Optional[IdentityProfile]:

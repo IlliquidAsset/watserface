@@ -1,11 +1,12 @@
 import gradio
 
 from watserface import state_manager
-from watserface.uis.components import about, common_options, execution, face_detector, face_landmarker, face_masker, face_selector, instant_runner, job_manager, job_runner, memory, output, output_options, processors, smart_preview, source, target, terminal, ui_workflow
+from watserface.uis.components import about, common_options, execution, face_detector, face_landmarker, face_masker, face_selector, instant_runner, job_manager, job_runner, memory, output, output_options, processors, smart_preview, terminal, ui_workflow
 from watserface.uis.components import enhanced_source, enhanced_target, progress_tracker, help_system, error_handler
 from watserface.identity_profile import get_identity_manager
 from watserface.face_set import list_face_sets, get_face_set_manager
 from watserface.training.core import start_identity_training
+from watserface.uis.layouts import studio
 
 
 def pre_check() -> bool:
@@ -22,53 +23,22 @@ def update_identity_status():
 
 def render() -> gradio.Blocks:
     """Render streamlined 4-step workflow layout with enhanced UX"""
-    with gradio.Blocks(
-        css_paths=["watserface/uis/assets/enhanced_styles.css"],
-        js_paths=["watserface/uis/assets/keyboard_navigation.js"]
-    ) as layout:
+    with gradio.Blocks() as layout:
         # Initialize error handling
         error_handler.setup_error_handling()
         
         # Header
         about.render()
-        
+
         # Error display (initially hidden)
         error_handler.render_error_display()
-        
-        # Guided tour for new users
-        guided_tour_panel, tour_dismiss = help_system.render_guided_tour()
         
         # Main workflow tabs
         with gradio.Tabs() as main_tabs:
             # Step 1: Upload
             with gradio.Tab("📁 Upload", id="upload_tab"):
-                # Help panel for upload section
-                help_system.HelpSystem.render_help_panel("upload")
-                
+                gradio.Markdown("### ⚠️ NOTE: This UI needs refactoring. Identity selection is missing and notifications are cluttered.", elem_classes=["error-text"])
                 with gradio.Row():
-                    with gradio.Column(scale=1):
-                        # Empty state walkthrough
-                        with gradio.Column(visible=True) as upload_empty_state:
-                            gradio.Markdown(
-                                """
-                                ## 🚀 Let's Get Started!
-                                
-                                **Step 1: Upload Your Media**
-                                
-                                1. **📸 Source Image**: Upload a clear photo of the person whose face you want to use
-                                2. **🎯 Target Media**: Upload the video or image where you want to place the face
-                                
-                                ### 💡 Pro Tips for Best Results:
-                                - ✅ Use front-facing, well-lit photos
-                                - ✅ Higher resolution images work better
-                                - ✅ Avoid sunglasses, masks, or extreme angles
-                                - ✅ Keep test videos under 30 seconds
-                                
-                                **Ready? Start by uploading your source image below! ⬇️**
-                                """,
-                                elem_id="upload_empty_state_guide"
-                            )
-                    
                     with gradio.Column(scale=2):
                         # Identity Status
                         with gradio.Row():
@@ -96,42 +66,10 @@ def render() -> gradio.Blocks:
                             interactive=False
                         )
             
-            # Step 2: Preview Selection  
+            # Step 2: Preview Selection
             with gradio.Tab("🔍 Preview", id="preview_tab"):
-                # Help panel for preview section
-                help_system.HelpSystem.render_help_panel("preview")
-                
                 with gradio.Row():
-                    with gradio.Column(scale=1):
-                        # Preview empty state
-                        with gradio.Column(visible=True) as preview_empty_state:
-                            gradio.Markdown(
-                                """
-                                ## 🎯 Smart Quality Selection
-                                
-                                **Choose your perfect balance of speed vs quality:**
-                                
-                                ### 🚀 Fast Preset
-                                - ⏱️ **Time**: ~15 seconds
-                                - 🎯 **Best for**: Testing, multiple iterations
-                                - 📊 **Quality**: Good for previews
-                                
-                                ### ⚖️ Balanced Preset ⭐ *Recommended*
-                                - ⏱️ **Time**: ~45 seconds  
-                                - 🎯 **Best for**: Most users, everyday use
-                                - 📊 **Quality**: High quality with enhancement
-                                
-                                ### ✨ Quality Preset
-                                - ⏱️ **Time**: ~90+ seconds
-                                - 🎯 **Best for**: Final outputs, professional work
-                                - 📊 **Quality**: Maximum quality, all features
-                                
-                                **New to face swapping? Start with Balanced!**
-                                """,
-                                elem_id="preview_empty_state_guide"
-                            )
-                    
-                    with gradio.Column(scale=3):
+                    with gradio.Column():
                         smart_preview.render()
                         
                         next_to_export_button = gradio.Button(
@@ -319,7 +257,42 @@ def render() -> gradio.Blocks:
 
                             train_info = gradio.Textbox(label="Training Info")
                             train_btn.click(train_action, inputs=[identity_dropdown, face_set_dropdown, epochs_slider, batch_size_slider, learning_rate_slider], outputs=[train_info])
-        
+
+            # Step 5: Studio (One-Shot Workflow)
+            with gradio.Tab("🎬 Studio", id="studio_tab"):
+                # Help panel for studio section
+                help_system.HelpSystem.render_help_panel("studio")
+
+                with gradio.Row():
+                    with gradio.Column(scale=1):
+                        # Studio info
+                        gradio.Markdown(
+                            """
+                            ## 🎬 Studio One-Shot Workflow
+
+                            **Simplified single-screen interface for rapid face swapping**
+
+                            The Studio layout provides a streamlined one-shot workflow where you can:
+                            - Build and train custom identity models
+                            - Configure target media and occlusion models
+                            - Map faces and execute swaps in one place
+
+                            ### When to use Studio:
+                            - ✅ You prefer a compact, single-screen workflow
+                            - ✅ You're training custom identity models
+                            - ✅ You need advanced occlusion handling (XSeg)
+                            - ✅ You want manual control over face mapping
+
+                            **Note:** Most users should use the main tabs above for a guided workflow.
+                            Studio is for power users who want everything in one view.
+                            """,
+                            elem_id="studio_guide"
+                        )
+
+                    with gradio.Column(scale=3):
+                        # Render studio content inline
+                        studio.render_content()
+
         # Register tab navigation components
         from watserface.uis.core import register_ui_component
         register_ui_component('main_tabs', main_tabs)
@@ -346,8 +319,7 @@ def listen() -> None:
     memory.listen()
     common_options.listen()
     output_options.listen()
-    source.listen()
-    target.listen()
+    # Note: source and target are replaced by enhanced_source/enhanced_target in streamlined layout
     output.listen()
     instant_runner.listen()
     job_runner.listen()
@@ -357,7 +329,10 @@ def listen() -> None:
     face_masker.listen()
     face_detector.listen()
     face_landmarker.listen()
-    
+
+    # Studio tab listeners
+    studio.listen()
+
     # Get navigation components
     from watserface.uis.core import get_ui_component
     main_tabs = get_ui_component('main_tabs')

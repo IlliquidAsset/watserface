@@ -138,6 +138,39 @@ docker run -p 7860:7860 watserface:latest
 
 ## Usage
 
+### UI Layouts
+
+WatserFace provides two UI layouts to match your workflow preferences:
+
+#### Streamlined Layout (Default)
+**Multi-tab guided workflow** - Best for most users
+
+- **📁 Upload**: Upload source and target media with guided tips
+- **🔍 Preview**: Quality presets and smart previewing
+- **⚡ Process**: Execute face swap with progress tracking
+- **🎓 Advanced**: Fine-tuning controls and model training
+- **🎬 Studio**: One-shot workflow for power users (see below)
+
+**Configure**: `ui_layouts = streamlined` in `watserface.ini`
+
+#### Studio Tab
+**Compact one-shot interface** - For experienced users
+
+The Studio tab (accessible within Streamlined layout) provides a simplified single-screen workflow where you can:
+- Build and train custom identity models
+- Resume existing identities or reuse face sets
+- Configure target media and occlusion models (XSeg)
+- Map faces and execute swaps in one place
+- Train advanced occlusion models
+
+**When to use Studio:**
+- ✅ You prefer a compact, single-screen workflow
+- ✅ You're training custom identity models
+- ✅ You need advanced occlusion handling (XSeg)
+- ✅ You want manual control over face mapping
+
+**Note**: The streamlined guided workflow is recommended for most users. Studio is designed for power users who want all controls in one view.
+
 ### Face Swapping
 
 ```bash

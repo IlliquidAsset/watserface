@@ -1,0 +1,141 @@
+# PRD: Phase 2.5 Transparency & Compositing Proof-of-Concept
+
+**Version:** 1.0
+**Date:** January 21, 2026
+**Status:** Ready for Execution
+**Test Scope:** Single-Frame Manual Validation
+
+---
+
+## 1. Executive Summary
+
+This document outlines the Proof-of-Concept (PoC) test for the **"Mayonnaise Strategy,"** a novel compositing workflow designed to handle transparent and semi-transparent occlusions (fluids, glass, smoke) in face swapping.
+
+Unlike traditional methods that treat occlusions as binary (mask/no-mask), this approach utilizes **Depth Maps** and **Alpha Blending** to separate the "Transmission Layer" (translucent objects) from the "Opaque Layer" (solid objects). This test aims to validate that a depth-driven composite can visually retain transparent details over a swapped face without full model training.
+
+## 2. Theoretical Basis: The "3-Layer Composition"
+
+We are testing the hypothesis that deepfakes should be rendered as a stack of physical layers rather than a single flat image.
+
+### The Layers
+
+1. **Background/Target Layer:** The original video frame (contains the Corn Dog and the Mayonnaise).
+2. **Identity Layer (Swap):** The `face_swapper` output (Source Face applied to Target).
+3. **Transmission Layer (The "Mayonnaise"):** A calculated alpha layer derived from **Depth** and **Normals**.
+
+### The Logic (Diffusion Knows Transparency)
+
+Recent research (DKT, Xu et al. 2025) suggests that diffusion models and advanced depth estimators can "see" transparent volumes.
+
+* **Hypothesis:** Pixels belonging to the transparent object will have a distinct depth value (closer to the camera) compared to the face.
+* **Mechanism:** By thresholding the depth map, we can isolate the transparent object and composite it *back* over the clean swap with partial opacity, preserving reflections and "wetness."
+
+---
+
+## 3. Test Resources & Prerequisites
+
+### 3.1. Assets
+
+* **Target Image:** A frame containing a face occluded by a translucent or fluid object (e.g., "The Mayonnaise Scene").
+* **Source Image:** The identity to be swapped into the scene.
+
+### 3.2. Tools
+
+* **WatserFace Environment:** For running the initial crude swap (`face_swapper.py`).
+* **External Depth Estimator:** HuggingFace Space (Depth Anything V2, Marigold, or similar) to generate the `depth_map.png`.
+* **Python Script:** A standalone script (provided below) to perform the compositing.
+
+---
+
+## 4. Test Procedure
+
+### Step 1: Generate the "Dirty" Swap
+
+Run the standard WatserFace swap on the **Target Image** using the **Source Image**.
+
+* **Output:** `frame_swapped_dirty.png`
+* *Expected State:* The face is swapped, but the transparent occlusion (mayonnaise) is likely erased, ghosted, or textured like skin.
+
+### Step 2: Generate the Depth Map
+
+Upload the original **Target Image** to a Depth Estimation demo (e.g., Depth Anything V2).
+
+* **Action:** Generate a grayscale depth map.
+* **Output:** `frame_depth.png`
+* *Requirement:* Ensure the transparent object is visible as a lighter/brighter shade (indicating closer depth) than the face.
+
+### Step 3: Execute the Composite Script
+
+Run the provided Python script to perform the alpha blending based on depth intensity.
+
+#### **Execution Script (`test_transparency_composite.py`)**
+
+```python
+import cv2
+import numpy as np
+
+def run_composite_test():
+    # --- Configuration ---
+    # Adjust strictly based on the specific depth map intensity of the occlusion
+    DEPTH_THRESHOLD_MIN = 0.6  # Start of the "liquid" (0.0=back, 1.0=front)
+    DEPTH_THRESHOLD_MAX = 1.0  # End of the "liquid"
+    BLUR_STRENGTH = (5, 5)     # Softens the mask edges
+    
+    # --- Load Assets ---
+    target_original = cv2.imread("target_image.png").astype(float)
+    swap_dirty = cv2.imread("frame_swapped_dirty.png").astype(float)
+    depth_map = cv2.imread("frame_depth.png", cv2.IMREAD_GRAYSCALE).astype(float) / 255.0
+
+    print(f"Loaded assets. Target shape: {target_original.shape}")
+
+    # --- 1. Generate Transmission Mask ---
+    # Isolate pixels that are "closer" than the face (the liquid)
+    _, liquid_mask = cv2.threshold(depth_map, DEPTH_THRESHOLD_MIN, DEPTH_THRESHOLD_MAX, cv2.THRESH_BINARY)
+    
+    # Soften the mask to simulate alpha transparency/feathering
+    liquid_alpha = cv2.GaussianBlur(liquid_mask, BLUR_STRENGTH, 0)
+    
+    # Normalize alpha to 0.0 - 1.0 range and expand dimensions
+    liquid_alpha = liquid_alpha / 255.0
+    liquid_alpha = np.repeat(liquid_alpha[:, :, np.newaxis], 3, axis=2)
+
+    # --- 2. The Composite Math ---
+    # Formula: Final = (Swap * (1 - Alpha)) + (Original * Alpha)
+    # Explanation: Where Alpha is 1 (liquid), show Original. Where Alpha is 0 (face), show Swap.
+    # Where Alpha is 0.5 (semi-transparent), blend them.
+    
+    final_composite = (swap_dirty * (1.0 - liquid_alpha)) + (target_original * liquid_alpha)
+
+    # --- 3. Save Output ---
+    cv2.imwrite("final_mayo_result.png", final_composite)
+    cv2.imwrite("debug_mask.png", liquid_mask * 255)
+    
+    print("✓ Processing Complete.")
+    print("  > Output: final_mayo_result.png")
+    print("  > Debug: debug_mask.png (Check this to tune DEPTH_THRESHOLD)")
+
+if __name__ == "__main__":
+    run_composite_test()
+
+```
+
+---
+
+## 5. Success Criteria & Evaluation
+
+The test is considered **Passed** if the final image meets the following visual criteria:
+
+1. **Identity Retention:** The underlying facial features (eyes, nose, structure) match the **Source Image**.
+2. **Occlusion Visibility:** The transparent object (mayonnaise) from the **Target Image** is clearly visible *on top* of the swapped face.
+3. **Physics Compliance:**
+* The "wetness" or specular highlights of the fluid are preserved (inherited from the Target).
+* There are no hard "cut-out" artifacts (jagged edges) around the fluid; the transition should feel soft (due to alpha blending).
+
+
+4. **No Double Features:** The original mouth/teeth inside the fluid area should not clash with the swapped mouth (though this may require masking tuning, the *depth* ordering is the priority here).
+
+## 6. Failure Modes (Troubleshooting)
+
+* **Result looks like original:** Depth Threshold is too low (masking the whole face). -> *Increase `DEPTH_THRESHOLD_MIN*`.
+* **Result looks like dirty swap:** Depth Threshold is too high (missing the liquid). -> *Decrease `DEPTH_THRESHOLD_MIN*`.
+* **Hard edges:** `BLUR_STRENGTH` is too low. -> *Increase kernel size to (15, 15)*.

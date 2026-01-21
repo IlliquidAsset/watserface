@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, TypeAlias, TypedDict
+from typing import Any, Dict, List, Literal, TypeAlias, TypedDict, Optional
 
 from numpy.typing import NDArray
 
@@ -48,12 +48,11 @@ FaceEnhancerInputs = TypedDict('FaceEnhancerInputs',
 	'reference_faces' : FaceSet,
 	'target_vision_frame' : VisionFrame
 })
-FaceSwapperInputs = TypedDict('FaceSwapperInputs',
-{
-	'reference_faces' : FaceSet,
-	'source_face' : Face,
-	'target_vision_frame' : VisionFrame
-})
+class FaceSwapperInputs(TypedDict):
+	reference_faces : Optional[List[Face]]
+	source_face : Optional[Face]
+	target_vision_frame : VisionFrame
+	face_history : Optional[List[List[Face]]]
 FrameColorizerInputs = TypedDict('FrameColorizerInputs',
 {
 	'target_vision_frame' : VisionFrame

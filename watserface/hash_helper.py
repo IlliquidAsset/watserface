@@ -27,6 +27,9 @@ def validate_hash(validate_path : str) -> bool:
 			validate_content = validate_file.read()
 
 		return create_hash(validate_content) == hash_content
+	
+	if is_file(validate_path):
+		return True
 	return False
 
 

@@ -141,7 +141,7 @@ class IdentityControlNetTrainer:
     
     def _load_models(self) -> None:
         """Load SD components and initialize/load ControlNet."""
-        logger.info(f"[Identity] Loading SD components from {self.sd_model_id}", __name__)
+        logger.info(f"Loading SD components from {self.sd_model_id}", __name__)
         
         # Load VAE
         self.vae = AutoencoderKL.from_pretrained(
@@ -180,13 +180,13 @@ class IdentityControlNetTrainer:
         
         # Initialize or load ControlNet
         if self.controlnet_model_id:
-            logger.info(f"[Identity] Loading ControlNet from {self.controlnet_model_id}", __name__)
+            logger.info(f"Loading ControlNet from {self.controlnet_model_id}", __name__)
             self.controlnet = ControlNetModel.from_pretrained(
                 self.controlnet_model_id,
                 torch_dtype=torch.float16 if self.mixed_precision == "fp16" else torch.float32
             )
         else:
-            logger.info("[Identity] Initializing ControlNet from UNet config", __name__)
+            logger.info("Initializing ControlNet from UNet config", __name__)
             # Create ControlNet with 4 conditioning channels (to match our 4-channel embedding projection)
             self.controlnet = ControlNetModel.from_unet(
                 self.unet,
@@ -269,17 +269,17 @@ class IdentityControlNetTrainer:
         Yields:
             (status_message, telemetry_dict)
         """
-        logger.info(f"[Identity] Initializing training for '{model_name}'", __name__)
+        logger.info(f"Initializing training for '{model_name}'", __name__)
         
         self.device = self._setup_device()
-        logger.info(f"[Identity] Using device: {self.device}", __name__)
+        logger.info(f"Using device: {self.device}", __name__)
         
         yield "Loading Stable Diffusion models...", {'status': 'Loading'}
         
         try:
             self._load_models()
         except Exception as e:
-            logger.error(f"[Identity] Failed to load models: {e}", __name__)
+            logger.error(f"Failed to load models: {e}", __name__)
             yield f"Error loading models: {e}", {'status': 'Error', 'error': str(e)}
             return
         
@@ -334,7 +334,7 @@ class IdentityControlNetTrainer:
         training_state_path = os.path.join(checkpoint_path, "training_state.pth")
         if os.path.exists(training_state_path):
             try:
-                logger.info(f"[Identity] Found existing checkpoint, attempting to resume...", __name__)
+                logger.info("Found existing checkpoint, attempting to resume...", __name__)
                 checkpoint_data = torch.load(training_state_path, map_location=self.device)
                 start_epoch = checkpoint_data.get('epoch', 0)
                 loss_history = checkpoint_data.get('loss_history', [])
@@ -363,9 +363,9 @@ class IdentityControlNetTrainer:
                         'resume_epoch': start_epoch,
                         'previous_loss': avg_loss
                     }
-                    logger.info(f"[Identity] Successfully resumed from epoch {start_epoch}", __name__)
+                    logger.info(f"Successfully resumed from epoch {start_epoch}", __name__)
             except Exception as e:
-                logger.warn(f"[Identity] Failed to load checkpoint: {e}. Starting from scratch.", __name__)
+                logger.warn(f"Failed to load checkpoint: {e}. Starting from scratch.", __name__)
                 start_epoch = 0
                 loss_history = []
 
@@ -373,7 +373,7 @@ class IdentityControlNetTrainer:
             # Check for stop signal at start of epoch
             from watserface.training import core as training_core
             if training_core._training_stopped:
-                logger.info(f"[Identity] Training stopped at epoch {epoch}", __name__)
+                logger.info(f"Training stopped at epoch {epoch}", __name__)
                 self._save_checkpoint(checkpoint_path, epoch, avg_loss, loss_history)
                 yield f"Training stopped at epoch {epoch}. Checkpoint saved.", {
                     'status': 'Stopped',
@@ -464,7 +464,7 @@ class IdentityControlNetTrainer:
                     # Check for stop signal during batch processing
                     from watserface.training import core as training_core
                     if training_core._training_stopped:
-                        logger.info(f"[Identity] Training stopped mid-epoch at {epoch}.{batch_count}", __name__)
+                        logger.info(f"Training stopped mid-epoch at {epoch}.{batch_count}", __name__)
                         self._save_checkpoint(checkpoint_path, epoch, epoch_loss / max(batch_count, 1), loss_history)
                         yield f"Training stopped during epoch {epoch + 1}. Checkpoint saved.", {
                             'status': 'Stopped',
@@ -523,12 +523,12 @@ class IdentityControlNetTrainer:
             # Save checkpoint
             if (epoch + 1) % save_interval == 0 or epoch == epochs - 1:
                 self._save_checkpoint(checkpoint_path, epoch + 1, avg_loss, loss_history)
-                logger.info(f"[Identity] Checkpoint saved at epoch {epoch + 1}", __name__)
+                logger.info(f"Checkpoint saved at epoch {epoch + 1}", __name__)
             
             # Log progress
-            if epoch % max(1, epochs // 10) == 0 or epoch == epochs - 1:
+            if (epoch + 1) % max(1, epochs // 20) == 0 or epoch == epochs - 1:
                 logger.info(
-                    f"[Identity] Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.6f} | ETA: {telemetry['eta']}",
+                    f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.6f} | ETA: {telemetry['eta']}",
                     __name__
                 )
             
@@ -579,7 +579,7 @@ class IdentityControlNetTrainer:
             os.path.join(output_path, "embedding_projection.pth")
         )
         
-        logger.info(f"[Identity] Exported ControlNet to {output_path}", __name__)
+        logger.info(f"Exported ControlNet to {output_path}", __name__)
         return output_path
 
 
@@ -605,7 +605,7 @@ class FallbackIdentityTrainer:
         # Extract dataset_dir from first batch
         # This is a compatibility shim
         logger.warn(
-            "[Identity] diffusers not available, using fallback SimSwap trainer",
+            "diffusers not available, using fallback SimSwap trainer",
             __name__
         )
         
@@ -637,7 +637,7 @@ def train_identity_model(
         save_dir = dataset_dir
 
     if DIFFUSERS_AVAILABLE and TRANSFORMERS_AVAILABLE:
-        logger.info("[Identity] Using diffusers ControlNet trainer", __name__)
+        logger.info("Using diffusers ControlNet trainer", __name__)
         
         dataset = FaceDataset(dataset_dir, max_frames=max_frames)
         if len(dataset) == 0:
@@ -679,7 +679,7 @@ def train_identity_model(
     else:
         # Fallback to existing SimSwap trainer
         logger.warn(
-            "[Identity] diffusers not available, using SimSwap fallback",
+            "diffusers not available, using SimSwap fallback",
             __name__
         )
         from watserface.training.train_instantid import train_instantid_model

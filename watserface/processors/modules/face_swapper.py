@@ -570,6 +570,8 @@ def swap_face(source_face : Face, target_face : Face, temp_vision_frame : Vision
 
 	model_name = get_model_name()
 	model_options = get_model_options()
+	if model_options is None:
+		logger.error(f"DEBUG: face_swapper model_options is None for model_name: {model_name}", __name__)
 	model_template = model_options.get('template')
 	model_size = model_options.get('size')
 	model_type = model_options.get('type')
@@ -729,12 +731,18 @@ def get_reference_frame(source_face : Face, target_face : Face, temp_vision_fram
 
 
 def get_source_face(source_paths: List[str]) -> Face:
+	from watserface import logger
+
 	profile_id = state_manager.get_item('identity_profile_id')
+	logger.info(f'get_source_face: profile_id={profile_id}, source_paths={source_paths}', __name__)
+
 	if profile_id:
 		manager = identity_profile.get_identity_manager()
 		profile = manager.source_intelligence.load_profile(profile_id)
+		logger.info(f'Loaded profile: {profile is not None}', __name__)
 		if profile:
-			embedding_mean = numpy.array(profile.embedding_mean, dtype=numpy.float64)
+			embedding_mean = numpy.array(profile.embedding_mean, dtype=numpy.float32)
+			logger.info(f'Created face from profile with embedding shape: {embedding_mean.shape}', __name__)
 			return Face(
 				bounding_box=None,
 				score_set=None,
@@ -747,6 +755,7 @@ def get_source_face(source_paths: List[str]) -> Face:
 				race=None
 			)
 
+	logger.info(f'Using source_paths to create face', __name__)
 	source_frames = read_static_images(source_paths)
 	source_faces = []
 	for source_frame in source_frames:
@@ -754,73 +763,152 @@ def get_source_face(source_paths: List[str]) -> Face:
 		temp_faces = sort_faces_by_order(temp_faces, 'large-small')
 		if temp_faces:
 			source_faces.append(get_first(temp_faces))
-	return get_average_face(source_faces)
+	result = get_average_face(source_faces)
+	logger.info(f'get_average_face returned: {result is not None}', __name__)
+	return result
 
 
-def process_frame(inputs : FaceSwapperInputs, skip_cache : bool = False) -> VisionFrame:
+def process_frame(inputs : FaceSwapperInputs, skip_cache : bool = False) -> Tuple[VisionFrame, List[Face]]:
 	from watserface import logger
+	from watserface.face_masker import create_occlusion_mask
 
 	reference_faces = inputs.get('reference_faces')
 	source_face = inputs.get('source_face')
 	target_vision_frame = inputs.get('target_vision_frame')
+	face_history = inputs.get('face_history')
 
-	logger.info(f'[FACE_SWAPPER] process_frame: source_face={source_face is not None}', __name__)
+	logger.info(f'process_frame: source_face={source_face is not None}', __name__)
 
 	if not source_face:
-		logger.warn('[FACE_SWAPPER] ✗ No source face provided - returning original frame', __name__)
-		return target_vision_frame
+		logger.warn('✗ No source face provided - returning original frame', __name__)
+		return target_vision_frame, []
 
 	many_faces = sort_and_filter_faces(get_many_faces([ target_vision_frame ], skip_cache))
-	logger.info(f'[FACE_SWAPPER] Detected {len(many_faces)} faces in target frame', __name__)
+	logger.info(f'Detected {len(many_faces)} faces in target frame', __name__)
+
+	# FALLBACK 1: Use trajectory prediction if we have history
+	if not many_faces and face_history:
+		logger.info(f'⚠ No faces detected, predicting next faces based on history (len={len(face_history)})', __name__)
+		many_faces = predict_next_faces(face_history)
+		logger.info(f'Predicted {len(many_faces)} faces', __name__)
+
+	# FALLBACK 2: Use XSeg to validate face presence and use last known position
+	# This handles cases where prediction fails OR when there's no history yet
+	if not many_faces:
+		try:
+			resized_frame = cv2.resize(target_vision_frame, (256, 256))
+			xseg_mask = create_occlusion_mask(resized_frame)
+			face_coverage = numpy.mean(xseg_mask > 0.5)
+			
+			if face_coverage > 0.02:  # XSeg confirms face is present
+				if face_history:
+					# Use last known face position
+					logger.warn(f'✓ XSeg confirms face ({face_coverage:.1%} coverage), using last known position', __name__)
+					many_faces = face_history[-1] if face_history[-1] else []
+				else:
+					# No history - create a synthetic face from XSeg mask center
+					# This bootstraps the first frame when detector fails but xseg sees a face
+					logger.warn(f'✓ XSeg confirms face ({face_coverage:.1%} coverage) but no history - attempting center estimation', __name__)
+					# Find the center of the xseg mask to estimate face location
+					h, w = target_vision_frame.shape[:2]
+					# Scale mask back to original size
+					full_mask = cv2.resize(xseg_mask, (w, h))
+					# Find bounding box of the mask
+					mask_binary = (full_mask > 0.5).astype(numpy.uint8)
+					coords = numpy.where(mask_binary > 0)
+					if len(coords[0]) > 0:
+						y_min, y_max = coords[0].min(), coords[0].max()
+						x_min, x_max = coords[1].min(), coords[1].max()
+						# Expand the bounding box a bit for face context
+						pad = int(max(y_max - y_min, x_max - x_min) * 0.2)
+						y_min = max(0, y_min - pad)
+						y_max = min(h, y_max + pad)
+						x_min = max(0, x_min - pad)
+						x_max = min(w, x_max + pad)
+						
+						# Try to detect face in this cropped region with lower threshold
+						original_score = state_manager.get_item('face_detector_score')
+						state_manager.set_item('face_detector_score', 0.1)  # Very low threshold
+						cropped = target_vision_frame[y_min:y_max, x_min:x_max]
+						if cropped.size > 0:
+							cropped_faces = sort_and_filter_faces(get_many_faces([cropped], skip_cache=True))
+							if cropped_faces:
+								# Adjust bounding boxes back to full frame coordinates
+								for face in cropped_faces:
+									face.bounding_box[0] += x_min
+									face.bounding_box[1] += y_min
+									face.bounding_box[2] += x_min
+									face.bounding_box[3] += y_min
+								many_faces = cropped_faces
+								logger.info(f'✓ Found {len(many_faces)} face(s) in XSeg region with lowered threshold', __name__)
+						state_manager.set_item('face_detector_score', original_score)
+			else:
+				logger.info(f'XSeg coverage too low ({face_coverage:.1%}), no face in frame', __name__)
+		except Exception as e:
+			logger.warn(f'⚠ XSeg fallback failed: {e}', __name__)
+
+	# FINAL FALLBACK: If we STILL have no faces but have history, just use last position anyway
+	# The principle: if a face was there before, it's probably still there
+	if not many_faces and face_history:
+		logger.warn('✗ All detection failed, forcing last known face position', __name__)
+		many_faces = face_history[-1] if face_history[-1] else []
 
 	if not many_faces:
-		logger.warn('[FACE_SWAPPER] ✗ No faces detected in target - returning original frame', __name__)
-		return target_vision_frame
+		logger.warn('✗ No faces detected in target - returning original frame', __name__)
+		return target_vision_frame, []
 
 	face_selector_mode = state_manager.get_item('face_selector_mode')
-	logger.info(f'[FACE_SWAPPER] Face selector mode: {face_selector_mode}', __name__)
+	logger.info(f'Face selector mode: {face_selector_mode}', __name__)
 
 	if face_selector_mode == 'many':
 		if many_faces:
-			logger.info(f'[FACE_SWAPPER] Swapping {len(many_faces)} faces...', __name__)
+			logger.info(f'Swapping {len(many_faces)} faces...', __name__)
 			for i, target_face in enumerate(many_faces):
-				logger.info(f'[FACE_SWAPPER] Swapping face {i+1}/{len(many_faces)}', __name__)
+				logger.info(f'Swapping face {i+1}/{len(many_faces)}', __name__)
 				target_vision_frame = swap_face(source_face, target_face, target_vision_frame)
 
 	if face_selector_mode == 'one':
 		target_face = get_one_face(many_faces)
 		if target_face:
-			logger.info('[FACE_SWAPPER] Swapping single face...', __name__)
+			logger.info('Swapping single face...', __name__)
 			target_vision_frame = swap_face(source_face, target_face, target_vision_frame)
 		else:
-			logger.warn('[FACE_SWAPPER] ✗ No suitable face found for "one" mode', __name__)
+			logger.warn('✗ No suitable face found for "one" mode', __name__)
 
 	if face_selector_mode == 'reference':
 		similar_faces = find_similar_faces(many_faces, reference_faces, state_manager.get_item('reference_face_distance'))
 		if similar_faces:
-			logger.info(f'[FACE_SWAPPER] Swapping {len(similar_faces)} similar faces...', __name__)
+			logger.info(f'Swapping {len(similar_faces)} similar faces...', __name__)
 			for similar_face in similar_faces:
 				target_vision_frame = swap_face(source_face, similar_face, target_vision_frame)
 		else:
-			logger.warn('[FACE_SWAPPER] ✗ No similar faces found matching reference', __name__)
+			logger.warn('✗ No similar faces found matching reference', __name__)
 
-	logger.info('[FACE_SWAPPER] ✓ Frame processing complete', __name__)
-	return target_vision_frame
+	logger.info('✓ Frame processing complete', __name__)
+	return target_vision_frame, many_faces
 
 
 def process_frames(source_paths : List[str], queue_payloads : List[QueuePayload], update_progress : UpdateProgress) -> None:
 	reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
 	source_face = get_source_face(source_paths)
+	face_history = []
 
 	for queue_payload in process_manager.manage(queue_payloads):
 		target_vision_path = queue_payload['frame_path']
 		target_vision_frame = read_image(target_vision_path)
-		output_vision_frame = process_frame(
+		output_vision_frame, detected_faces = process_frame(
 		{
 			'reference_faces': reference_faces,
 			'source_face': source_face,
-			'target_vision_frame': target_vision_frame
+			'target_vision_frame': target_vision_frame,
+			'face_history': face_history
 		}, skip_cache = True)
+		
+		if detected_faces:
+			face_history.append(detected_faces)
+			if len(face_history) > 10:
+				face_history.pop(0)
+
 		write_image(target_vision_path, output_vision_frame)
 		update_progress(1)
 
@@ -829,11 +917,12 @@ def process_image(source_paths : List[str], target_path : str, output_path : str
 	reference_faces = get_reference_faces() if 'reference' in state_manager.get_item('face_selector_mode') else None
 	source_face = get_source_face(source_paths)
 	target_vision_frame = read_static_image(target_path)
-	output_vision_frame = process_frame(
+	output_vision_frame, _ = process_frame(
 	{
 		'reference_faces': reference_faces,
 		'source_face': source_face,
-		'target_vision_frame': target_vision_frame
+		'target_vision_frame': target_vision_frame,
+		'face_history': None
 	})
 	write_image(output_path, output_vision_frame)
 

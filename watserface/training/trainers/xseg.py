@@ -81,7 +81,8 @@ class XSegTrainer:
         batch_size: int = 8,
         learning_rate: float = 1e-4,
         save_interval: int = 10,
-        image_size: int = 256
+        image_size: int = 256,
+        save_dir: Optional[str] = None
     ) -> Iterator[Tuple[str, Dict]]:
         """
         Train XSeg model on dataset.
@@ -94,15 +95,21 @@ class XSegTrainer:
             learning_rate: Optimizer learning rate
             save_interval: Save checkpoint every N epochs
             image_size: Input image size (square)
+            save_dir: Optional directory to save model and checkpoints
             
         Yields:
             (status_message, telemetry_dict)
         """
-        logger.info(f"[XSeg] Initializing training for '{model_name}'", __name__)
+        logger.info(f"Initializing training for '{model_name}'", __name__)
         
         self.device = self._setup_device()
-        logger.info(f"[XSeg] Using device: {self.device}", __name__)
+        logger.info(f"Using device: {self.device}", __name__)
         
+        # Determine output directory
+        output_dir = save_dir if save_dir else dataset_dir
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            
         dataset = XSegDataset(dataset_dir, image_size=image_size)
         if len(dataset) == 0:
             raise ValueError(f"No valid samples found in {dataset_dir}")
@@ -125,19 +132,20 @@ class XSegTrainer:
         self.criterion = smp.losses.DiceLoss(mode='binary')
         bce_loss = nn.BCEWithLogitsLoss()
         
-        checkpoint_path = os.path.join(dataset_dir, f"{model_name}_xseg.pth")
+        checkpoint_path = os.path.join(output_dir, f"{model_name}_xseg.pth")
         start_epoch = 0
         
+        # Check for existing checkpoint
         if os.path.exists(checkpoint_path):
-            logger.info(f"[XSeg] Resuming from checkpoint", __name__)
+            logger.info(f"Resuming from checkpoint: {checkpoint_path}", __name__)
             try:
                 checkpoint = torch.load(checkpoint_path, map_location=self.device)
                 self.model.load_state_dict(checkpoint['model_state_dict'])
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
                 start_epoch = checkpoint.get('epoch', 0)
-                logger.info(f"[XSeg] Resumed from epoch {start_epoch}", __name__)
+                logger.info(f"Resumed from epoch {start_epoch}", __name__)
             except Exception as e:
-                logger.warn(f"[XSeg] Could not load checkpoint: {e}", __name__)
+                logger.warn(f"Could not load checkpoint: {e}", __name__)
         
         self.model.train()
         start_time = time.time()
@@ -156,7 +164,7 @@ class XSegTrainer:
             # Check for stop signal at start of epoch
             from watserface.training import core as training_core
             if training_core._training_stopped:
-                logger.info(f"[XSeg] Training stopped at epoch {epoch}", __name__)
+                logger.info(f"Training stopped at epoch {epoch}", __name__)
                 self._save_checkpoint(checkpoint_path, epoch, avg_loss)
                 yield f"Training stopped at epoch {epoch}. Checkpoint saved.", {
                     'status': 'Stopped',
@@ -214,11 +222,11 @@ class XSegTrainer:
             
             if (epoch + 1) % save_interval == 0 or epoch == epochs - 1:
                 self._save_checkpoint(checkpoint_path, epoch + 1, avg_loss)
-                logger.info(f"[XSeg] Checkpoint saved at epoch {epoch + 1}", __name__)
+                logger.info(f"Checkpoint saved at epoch {epoch + 1}", __name__)
             
-            if epoch % max(1, epochs // 10) == 0 or epoch == epochs - 1:
+            if (epoch + 1) % 5 == 0 or epoch == epochs - 1:
                 logger.info(
-                    f"[XSeg] Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}",
+                    f"Epoch {epoch + 1}/{epochs} | Loss: {avg_loss:.4f} | ETA: {telemetry['eta']}",
                     __name__
                 )
             
@@ -226,7 +234,7 @@ class XSegTrainer:
         
         yield "Exporting ONNX model...", {'status': 'Exporting'}
         
-        onnx_path = self._export_onnx(dataset_dir, model_name)
+        onnx_path = self._export_onnx(output_dir, model_name)
         
         final_report = {
             'status': 'Complete',
@@ -278,7 +286,8 @@ def train_xseg_model(
     batch_size: int = 8,
     learning_rate: float = 1e-4,
     save_interval: int = 10,
-    progress: Any = None
+    progress: Any = None,
+    save_dir: Optional[str] = None
 ) -> Iterator[Tuple[str, Dict]]:
     """
     Compatibility wrapper for existing training/core.py interface.
@@ -297,5 +306,6 @@ def train_xseg_model(
         epochs=epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
-        save_interval=save_interval
+        save_interval=save_interval,
+        save_dir=save_dir
     )

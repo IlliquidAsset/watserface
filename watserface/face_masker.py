@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import List, Tuple
+import os
 
 import cv2
 import numpy
@@ -10,10 +11,6 @@ from watserface.download import conditional_download_hashes, conditional_downloa
 from watserface.filesystem import resolve_relative_path
 from watserface.thread_helper import conditional_thread_semaphore
 from watserface.types import DownloadScope, DownloadSet, FaceLandmark68, FaceMaskArea, FaceMaskRegion, InferencePool, Mask, ModelSet, Padding, VisionFrame
-
-
-IMAGENET_MEAN = numpy.array([ 0.485, 0.456, 0.406 ], dtype = numpy.float32)
-IMAGENET_STD = numpy.array([ 0.229, 0.224, 0.225 ], dtype = numpy.float32)
 
 
 @lru_cache(maxsize = None)
@@ -123,6 +120,29 @@ def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 	}
 
 
+def get_model_options(model_name: str) -> ModelSet:
+	# Check static set
+	options = create_static_model_set('full').get(model_name)
+	if options:
+		return options
+	
+	# Check if it's a path (custom model)
+	if model_name and (model_name.endswith('.onnx') or os.path.exists(model_name)):
+		return {
+			'hashes': {},
+			'sources':
+			{
+				'face_occluder':
+				{
+					'url': None,
+					'path': model_name
+				}
+			},
+			'size': (256, 256) # Assumption for XSeg
+		}
+	return None
+
+
 def get_inference_pool() -> InferencePool:
 	model_names = [ state_manager.get_item('face_occluder_model'), state_manager.get_item('face_parser_model') ]
 	_, model_source_set = collect_model_downloads()
@@ -140,10 +160,13 @@ def collect_model_downloads() -> Tuple[DownloadSet, DownloadSet]:
 	model_hash_set = {}
 	model_source_set = {}
 
-	for face_occluder_model in [ 'xseg_1', 'xseg_2', 'xseg_3' ]:
-		if state_manager.get_item('face_occluder_model') == face_occluder_model:
-			model_hash_set[face_occluder_model] = model_set.get(face_occluder_model).get('hashes').get('face_occluder')
-			model_source_set[face_occluder_model] = model_set.get(face_occluder_model).get('sources').get('face_occluder')
+	face_occluder_model = state_manager.get_item('face_occluder_model')
+	if face_occluder_model:
+		options = get_model_options(face_occluder_model)
+		if options:
+			if options.get('hashes'):
+				model_hash_set[face_occluder_model] = options.get('hashes').get('face_occluder')
+			model_source_set[face_occluder_model] = options.get('sources').get('face_occluder')
 
 	for face_parser_model in [ 'bisenet_resnet_18', 'bisenet_resnet_34' ]:
 		if state_manager.get_item('face_parser_model') == face_parser_model:
@@ -163,7 +186,7 @@ def create_box_mask(crop_vision_frame : VisionFrame, face_mask_blur : float, fac
 	crop_size = crop_vision_frame.shape[:2][::-1]
 	blur_amount = int(crop_size[0] * 0.5 * face_mask_blur)
 	blur_area = max(blur_amount // 2, 1)
-	box_mask : Mask = numpy.ones(crop_size, dtype = numpy.float32)
+	box_mask : Mask = numpy.ones(crop_size).astype(numpy.float32)
 	box_mask[:max(blur_area, int(crop_size[1] * face_mask_padding[0] / 100)), :] = 0
 	box_mask[-max(blur_area, int(crop_size[1] * face_mask_padding[2] / 100)):, :] = 0
 	box_mask[:, :max(blur_area, int(crop_size[0] * face_mask_padding[3] / 100))] = 0
@@ -176,15 +199,29 @@ def create_box_mask(crop_vision_frame : VisionFrame, face_mask_blur : float, fac
 
 def create_occlusion_mask(crop_vision_frame : VisionFrame) -> Mask:
 	model_name = state_manager.get_item('face_occluder_model')
-	model_size = create_static_model_set('full').get(model_name).get('size')
+	model_size = get_model_options(model_name).get('size')
 	prepare_vision_frame = cv2.resize(crop_vision_frame, model_size)
-	prepare_vision_frame = prepare_vision_frame.astype(numpy.float32)
-	prepare_vision_frame /= 255.0
-	prepare_vision_frame = numpy.expand_dims(prepare_vision_frame, axis = 0)
-	prepare_vision_frame = prepare_vision_frame.transpose(0, 1, 2, 3)
+	prepare_vision_frame = numpy.expand_dims(prepare_vision_frame, axis = 0).astype(numpy.float32) / 255.0
+	
+	face_occluder = get_inference_pool().get(model_name)
+	input_shape = face_occluder.get_inputs()[0].shape
+	if input_shape[1] == 3:
+		prepare_vision_frame = prepare_vision_frame.transpose(0, 3, 1, 2)
+	else:
+		prepare_vision_frame = prepare_vision_frame.transpose(0, 1, 2, 3)
+		
 	occlusion_mask = forward_occlude_face(prepare_vision_frame)
-	occlusion_mask = occlusion_mask.transpose(0, 1, 2).clip(0, 1).astype(numpy.float32)
+	
+	if occlusion_mask.ndim == 3:
+		if occlusion_mask.shape[0] < occlusion_mask.shape[1] and occlusion_mask.shape[0] < occlusion_mask.shape[2]:
+			occlusion_mask = occlusion_mask.transpose(1, 2, 0)
+			
+	occlusion_mask = occlusion_mask.clip(0, 1).astype(numpy.float32)
 	occlusion_mask = cv2.resize(occlusion_mask, crop_vision_frame.shape[:2][::-1])
+	
+	if occlusion_mask.ndim == 3:
+		occlusion_mask = numpy.max(occlusion_mask, axis=2)
+		
 	occlusion_mask = (cv2.GaussianBlur(occlusion_mask.clip(0, 1), (0, 0), 5).clip(0.5, 1) - 0.5) * 2
 	return occlusion_mask
 
@@ -198,7 +235,7 @@ def create_area_mask(crop_vision_frame : VisionFrame, face_landmark_68 : FaceLan
 			landmark_points.extend(watserface.choices.face_mask_area_set.get(face_mask_area))
 
 	convex_hull = cv2.convexHull(face_landmark_68[landmark_points].astype(numpy.int32))
-	area_mask = numpy.zeros(crop_size, dtype = numpy.float32)
+	area_mask = numpy.zeros(crop_size).astype(numpy.float32)
 	cv2.fillConvexPoly(area_mask, convex_hull, 1.0) # type: ignore[call-overload]
 	area_mask = (cv2.GaussianBlur(area_mask.clip(0, 1), (0, 0), 5).clip(0.5, 1) - 0.5) * 2
 	return area_mask
@@ -206,12 +243,11 @@ def create_area_mask(crop_vision_frame : VisionFrame, face_landmark_68 : FaceLan
 
 def create_region_mask(crop_vision_frame : VisionFrame, face_mask_regions : List[FaceMaskRegion]) -> Mask:
 	model_name = state_manager.get_item('face_parser_model')
-	model_size = create_static_model_set('full').get(model_name).get('size')
+	model_size = get_model_options(model_name).get('size')
 	prepare_vision_frame = cv2.resize(crop_vision_frame, model_size)
-	prepare_vision_frame = prepare_vision_frame[:, :, ::-1].astype(numpy.float32)
-	prepare_vision_frame /= 255.0
-	prepare_vision_frame -= IMAGENET_MEAN
-	prepare_vision_frame /= IMAGENET_STD
+	prepare_vision_frame = prepare_vision_frame[:, :, ::-1].astype(numpy.float32) / 255.0
+	prepare_vision_frame = numpy.subtract(prepare_vision_frame, numpy.array([ 0.485, 0.456, 0.406 ]).astype(numpy.float32))
+	prepare_vision_frame = numpy.divide(prepare_vision_frame, numpy.array([ 0.229, 0.224, 0.225 ]).astype(numpy.float32))
 	prepare_vision_frame = numpy.expand_dims(prepare_vision_frame, axis = 0)
 	prepare_vision_frame = prepare_vision_frame.transpose(0, 3, 1, 2)
 	region_mask = forward_parse_face(prepare_vision_frame)
@@ -224,11 +260,13 @@ def create_region_mask(crop_vision_frame : VisionFrame, face_mask_regions : List
 def forward_occlude_face(prepare_vision_frame : VisionFrame) -> Mask:
 	model_name = state_manager.get_item('face_occluder_model')
 	face_occluder = get_inference_pool().get(model_name)
+	face_occluder_inputs = face_occluder.get_inputs()
+	face_occluder_input_name = face_occluder_inputs[0].name
 
 	with conditional_thread_semaphore():
 		occlusion_mask : Mask = face_occluder.run(None,
 		{
-			'input': prepare_vision_frame
+			face_occluder_input_name: prepare_vision_frame
 		})[0][0]
 
 	return occlusion_mask
@@ -237,11 +275,13 @@ def forward_occlude_face(prepare_vision_frame : VisionFrame) -> Mask:
 def forward_parse_face(prepare_vision_frame : VisionFrame) -> Mask:
 	model_name = state_manager.get_item('face_parser_model')
 	face_parser = get_inference_pool().get(model_name)
+	face_parser_inputs = face_parser.get_inputs()
+	face_parser_input_name = face_parser_inputs[0].name
 
 	with conditional_thread_semaphore():
 		region_mask : Mask = face_parser.run(None,
 		{
-			'input': prepare_vision_frame
+			face_parser_input_name: prepare_vision_frame
 		})[0][0]
 
 	return region_mask

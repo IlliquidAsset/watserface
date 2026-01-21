@@ -1,5 +1,6 @@
 from typing import Any, Dict, Generator, List, Optional, Tuple
 import os
+import shutil
 import time
 
 from watserface import state_manager, logger
@@ -115,7 +116,7 @@ class StudioOrchestrator:
                 msg, telemetry = status[0], status[1]
             else:
                 msg = str(status)
-            yield self.state.log(f'[Identity] {msg}'), telemetry
+            yield self.state.log(msg), telemetry
         
         if telemetry.get('model_path'):
             identity.model_path = telemetry['model_path']
@@ -131,14 +132,36 @@ class StudioOrchestrator:
         if not paths:
             yield self.state.log('No valid target file'), {}
             return
-        
-        self.state.target_path = paths[0]
-        
-        info = {'path': self.state.target_path, 'is_video': False, 'has_audio': False}
+
+        temp_path = paths[0]
+
+        # Check if file actually exists
+        if not os.path.exists(temp_path):
+            yield self.state.log(f'⚠️ Warning: File does not exist: {temp_path}'), {'path': temp_path, 'exists': False}
+            return
+
+        # Copy to persistent location to avoid Gradio temp cleanup
+        persistent_dir = os.path.join(os.getcwd(), 'models', 'targets')
+        os.makedirs(persistent_dir, exist_ok=True)
+
+        filename = os.path.basename(temp_path)
+        persistent_path = os.path.join(persistent_dir, filename)
+
+        # Copy file to persistent location
+        try:
+            shutil.copy2(temp_path, persistent_path)
+            self.state.target_path = persistent_path
+            yield self.state.log(f'Copied target to persistent storage: {filename}'), {}
+        except Exception as e:
+            yield self.state.log(f'Failed to copy target: {e}'), {}
+            # Fall back to temp path (risky but better than nothing)
+            self.state.target_path = temp_path
+
+        info = {'path': self.state.target_path, 'is_video': False, 'has_audio': False, 'exists': True}
         if is_video(self.state.target_path):
             info['is_video'] = True
             info['has_audio'] = has_audio(self.state.target_path)
-        
+
         yield self.state.log(f'Target set: {os.path.basename(self.state.target_path)}'), info
     
     def train_occlusion(self, name: str, epochs: int = 50) -> Generator[Tuple[str, Dict], None, None]:
@@ -160,7 +183,7 @@ class StudioOrchestrator:
                 msg, telemetry = status[0], status[1]
             else:
                 msg = str(status)
-            yield self.state.log(f'[Occlusion] {msg}'), telemetry
+            yield self.state.log(msg), telemetry
         
         if telemetry.get('model_path'):
             occlusion.model_path = telemetry['model_path']
@@ -173,23 +196,42 @@ class StudioOrchestrator:
         if not self.state.target_path:
             yield self.state.log('No target set'), {}
             return
-        
+
         if not self.state.identities:
             yield self.state.log('No identities defined'), {}
             return
-        
+
+        # Verify target file exists
+        if not os.path.exists(self.state.target_path):
+            yield self.state.log(f'❌ Target file no longer exists: {self.state.target_path}'), {}
+            yield self.state.log('Please re-upload the target file'), {}
+            return
+
         self.state.phase = StudioPhase.MAPPING
-        yield self.state.log('Analyzing target for face mapping...'), {}
+        yield self.state.log(f'Analyzing target for face mapping: {self.state.target_path}'), {}
         
         from watserface.face_analyser import get_many_faces
         from watserface.vision import read_static_image, read_static_images
-        
+
+        # Temporarily lower face detector threshold for initial mapping
+        original_score = state_manager.get_item('face_detector_score')
+        state_manager.set_item('face_detector_score', 0.25)  # Lower threshold to detect more faces
+
         if is_video(self.state.target_path):
             from watserface.ffmpeg import extract_frames
             from watserface.temp_helper import get_temp_directory_path, create_temp_directory, clear_temp_directory
+            from watserface import process_manager
 
             create_temp_directory(self.state.target_path)
-            if not extract_frames(self.state.target_path, '640x480', 30.0, 0, 1):
+
+            # Set process manager state to allow ffmpeg to complete
+            # Extract frame from 2 seconds in (frame 60 at 30fps) to avoid blank first frames
+            # Use original resolution to preserve face quality for detection
+            process_manager.start()
+            extraction_result = extract_frames(self.state.target_path, '1280x720', 30.0, 60, 61)
+            process_manager.end()
+
+            if not extraction_result:
                 yield self.state.log('Could not extract frame from video'), {}
                 return
 
@@ -205,11 +247,20 @@ class StudioOrchestrator:
         else:
             frame = read_static_image(self.state.target_path)
         
+        # Try to detect faces with debug info
         faces = get_many_faces([frame])
+
+        # Restore original face detector score
+        state_manager.set_item('face_detector_score', original_score)
+
         if not faces:
-            yield self.state.log('No faces detected in target'), {}
+            # Log frame info for debugging
+            import numpy
+            frame_info = f"Frame shape: {frame.shape if hasattr(frame, 'shape') else 'unknown'}"
+            yield self.state.log(f'No faces detected in target. {frame_info}'), {}
+            yield self.state.log('Try: 1) Use a video with clear, frontal faces 2) Check face detector settings'), {}
             return
-        
+
         yield self.state.log(f'Detected {len(faces)} face(s) in target'), {'face_count': len(faces)}
         
         self.state.mappings.clear()
@@ -226,13 +277,51 @@ class StudioOrchestrator:
                 yield self.state.log(f'Mapped face {i} -> identity "{identity_names[i]}"'), {}
         
         self.state.phase = StudioPhase.IDLE
+
+    def override_mapping(self, identity_name: str, occlusion_model: str) -> Generator[Tuple[str, Dict], None, None]:
+        """Manually override mapping settings."""
+        if identity_name:
+            # If identity is not in state (e.g. pre-existing but not loaded), try to load it
+            if identity_name not in self.state.identities:
+                from watserface.identity_profile import get_identity_manager
+                profile = get_identity_manager().source_intelligence.load_profile(identity_name)
+                if profile:
+                    self.state.add_identity(identity_name, profile.source_files)
+                    self.state.log(f"Loaded identity '{identity_name}' from storage")
+            
+            # Update mapping
+            self.state.mappings.clear()
+            self.state.mappings.append(FaceMapping(
+                source_identity=identity_name,
+                target_face_index=0,  # Default to first face
+                confidence=1.0
+            ))
+            yield self.state.log(f"Set identity mapping: Face 0 -> {identity_name}"), {}
+
+        if occlusion_model:
+            # Set occlusion model in global state
+            if occlusion_model.endswith('.onnx'):
+                state_manager.set_item('face_occluder_model', occlusion_model)
+            else:
+                state_manager.set_item('face_occluder_model', occlusion_model.replace('.onnx', '').replace('.hash', ''))
+            mask_types = state_manager.get_item('face_mask_types') or []
+            if 'occlusion' not in mask_types:
+                mask_types.append('occlusion')
+                state_manager.set_item('face_mask_types', mask_types)
+            yield self.state.log(f"Using occlusion model: {occlusion_model}"), {}
     
     def preview(self, frame_number: int = 0) -> Generator[Tuple[str, Any], None, None]:
         if not self.state.target_path or not self.state.mappings:
             yield self.state.log('Cannot preview: missing target or mappings'), None
             return
-        
-        yield self.state.log('Generating preview frame...'), None
+
+        # Verify target file exists
+        if not os.path.exists(self.state.target_path):
+            yield self.state.log(f'❌ Target file no longer exists: {self.state.target_path}'), None
+            yield self.state.log('Please re-upload the target file'), None
+            return
+
+        yield self.state.log(f'Generating preview from: {self.state.target_path}'), None
         
         self._configure_processors()
         
@@ -242,9 +331,16 @@ class StudioOrchestrator:
         if is_video(self.state.target_path):
             from watserface.ffmpeg import extract_frames
             from watserface.temp_helper import get_temp_directory_path, create_temp_directory, clear_temp_directory
+            from watserface import process_manager
 
             create_temp_directory(self.state.target_path)
-            if not extract_frames(self.state.target_path, '640x480', 30.0, frame_number, frame_number + 1):
+
+            # Set process manager state to allow ffmpeg to complete
+            process_manager.start()
+            extraction_result = extract_frames(self.state.target_path, '640x480', 30.0, frame_number, frame_number + 1)
+            process_manager.end()
+
+            if not extraction_result:
                 yield self.state.log('Could not extract preview frame'), None
                 return
 
@@ -276,9 +372,15 @@ class StudioOrchestrator:
         if not self.state.target_path or not self.state.mappings:
             yield self.state.log('Cannot execute: missing target or mappings'), None
             return
-        
+
+        # Verify target file exists
+        if not os.path.exists(self.state.target_path):
+            yield self.state.log(f'❌ Target file no longer exists: {self.state.target_path}'), None
+            yield self.state.log('Please re-upload the target file'), None
+            return
+
         self.state.phase = StudioPhase.EXECUTING
-        yield self.state.log('Starting full execution...'), None
+        yield self.state.log(f'Starting execution with target: {self.state.target_path}'), None
         
         self._configure_processors()
         
@@ -304,6 +406,8 @@ class StudioOrchestrator:
             else:
                 error_code = process_image(start_time)
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             yield self.state.log(f'Execution failed: {e}'), None
             self.state.phase = StudioPhase.IDLE
             return
@@ -340,7 +444,7 @@ class StudioOrchestrator:
         if has_trained_occlusion:
             occlusion = next((o for o in self.state.occlusions.values() if o.model_path), None)
             if occlusion:
-                state_manager.set_item('face_occluder_model', os.path.basename(occlusion.model_path))
+                state_manager.set_item('face_occluder_model', occlusion.model_path)
                 mask_types = state_manager.get_item('face_mask_types') or []
                 if 'occlusion' not in mask_types:
                     mask_types.append('occlusion')
@@ -351,17 +455,74 @@ class StudioOrchestrator:
         state_manager.set_item('face_enhancer_blend', 100)
         
         if self.state.target_path and is_video(self.state.target_path) and has_audio(self.state.target_path):
-            processors.append('lip_syncer')
+            # Only add lip syncer if we have source audio to sync from
+            from watserface.filesystem import filter_audio_paths
+            source_paths = state_manager.get_item('source_paths')
+            if source_paths and filter_audio_paths(source_paths):
+                processors.append('lip_syncer')
         
         state_manager.set_item('processors', processors)
         
         for mapping in self.state.mappings:
             identity = self.state.identities.get(mapping.source_identity)
-            if identity and identity.source_paths:
-                state_manager.set_item('source_paths', identity.source_paths)
+            if identity:
+                # Check if this identity has a saved profile with embeddings
+                # If so, use the profile embeddings instead of source files (which may not exist)
+                from watserface.identity_profile import get_identity_manager
+                profile = get_identity_manager().source_intelligence.load_profile(mapping.source_identity)
+
+                if profile and profile.embedding_mean:
+                    # Use identity profile embeddings (more reliable than file paths)
+                    state_manager.set_item('identity_profile_id', mapping.source_identity)
+                    state_manager.set_item('source_paths', [])
+                    logger.info(f'[ORCHESTRATOR] Using identity profile embeddings for: {mapping.source_identity}', __name__)
+                elif identity.source_paths and any(os.path.exists(p) for p in identity.source_paths):
+                    # Fall back to source files only if they actually exist
+                    existing_paths = [p for p in identity.source_paths if os.path.exists(p)]
+                    state_manager.set_item('source_paths', existing_paths)
+                    state_manager.set_item('identity_profile_id', None)
+                    logger.info(f'[ORCHESTRATOR] Using {len(existing_paths)} existing source file(s)', __name__)
+                else:
+                    logger.warn(f'[ORCHESTRATOR] No valid source for identity {mapping.source_identity}', __name__)
                 break
-        
+
         state_manager.set_item('target_path', self.state.target_path)
+
+        # Set output parameters required for execution
+        from watserface.vision import detect_video_resolution, detect_video_fps, detect_image_resolution, pack_resolution
+
+        # Set trim frame parameters only if not already set (e.g. by test script)
+        if state_manager.get_item('trim_frame_start') is None:
+            state_manager.set_item('trim_frame_start', None)
+        if state_manager.get_item('trim_frame_end') is None:
+            state_manager.set_item('trim_frame_end', None)
+
+        # Set output quality and encoder parameters
+        from watserface.ffmpeg import get_available_encoder_set
+        from watserface.common_helper import get_first
+
+        available_encoders = get_available_encoder_set()
+        state_manager.set_item('output_image_quality', 80)
+        state_manager.set_item('output_audio_encoder', get_first(available_encoders.get('audio')))
+        state_manager.set_item('output_audio_quality', 80)
+        state_manager.set_item('output_audio_volume', 100)
+        state_manager.set_item('output_video_encoder', get_first(available_encoders.get('video')))
+        state_manager.set_item('output_video_quality', 80)
+        state_manager.set_item('output_video_preset', 'veryfast')
+
+        # Set resolution and fps based on target
+        if self.state.target_path:
+            if is_video(self.state.target_path):
+                video_resolution = detect_video_resolution(self.state.target_path)
+                if video_resolution:
+                    state_manager.set_item('output_video_resolution', pack_resolution(video_resolution))
+                video_fps = detect_video_fps(self.state.target_path)
+                if video_fps:
+                    state_manager.set_item('output_video_fps', video_fps)
+            else:
+                image_resolution = detect_image_resolution(self.state.target_path)
+                if image_resolution:
+                    state_manager.set_item('output_image_resolution', pack_resolution(image_resolution))
     
     def _estimate_quality(self, frame: Any, mapping: FaceMapping) -> float:
         return 0.85

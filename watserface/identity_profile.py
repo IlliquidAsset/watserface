@@ -514,9 +514,8 @@ class SourceIntelligence:
             
             profile = IdentityProfile.from_dict(data)
             
-            # Update last used
+            # Update last used (in memory only, avoid disk write on read)
             profile.last_used = datetime.now().isoformat()
-            self.save_profile(profile)
             
             return profile
             

@@ -1,14 +1,19 @@
 import gradio
+import os
 from typing import Optional, List, Any, Dict
 
 from watserface import state_manager, wording
 from watserface.studio import StudioOrchestrator, StudioPhase
 from watserface.uis.components import about, footer
+from watserface.identity_profile import get_identity_manager
+from watserface.face_set import list_face_sets
 
 ORCHESTRATOR: Optional[StudioOrchestrator] = None
 
 IDENTITY_NAME_INPUT = None
 IDENTITY_FILES_INPUT = None
+IDENTITY_RESUME_DROPDOWN = None
+FACESET_DROPDOWN = None
 IDENTITY_ADD_BTN = None
 IDENTITY_TRAIN_BTN = None
 IDENTITY_EPOCHS_SLIDER = None
@@ -16,10 +21,14 @@ IDENTITY_LIST = None
 
 TARGET_INPUT = None
 TARGET_INFO = None
+EXECUTION_TARGET_INPUT = None
 
 OCCLUSION_NAME_INPUT = None
 OCCLUSION_TRAIN_BTN = None
 OCCLUSION_EPOCHS_SLIDER = None
+
+IDENTITY_SELECT = None
+OCCLUSION_SELECT = None
 
 MAP_BTN = None
 MAPPING_DISPLAY = None
@@ -42,9 +51,11 @@ def pre_check() -> bool:
     return True
 
 
-def render() -> gradio.Blocks:
+def render_content() -> None:
+    """Render studio content without Blocks wrapper (for embedding in other layouts)"""
     global ORCHESTRATOR
-    global IDENTITY_NAME_INPUT, IDENTITY_FILES_INPUT, IDENTITY_ADD_BTN, IDENTITY_TRAIN_BTN
+    global IDENTITY_NAME_INPUT, IDENTITY_FILES_INPUT, IDENTITY_RESUME_DROPDOWN, FACESET_DROPDOWN
+    global IDENTITY_ADD_BTN, IDENTITY_TRAIN_BTN
     global IDENTITY_EPOCHS_SLIDER, IDENTITY_LIST, IDENTITY_STATUS
     global TARGET_INPUT, TARGET_INFO
     global OCCLUSION_NAME_INPUT, OCCLUSION_TRAIN_BTN, OCCLUSION_EPOCHS_SLIDER, OCCLUSION_STATUS
@@ -52,8 +63,191 @@ def render() -> gradio.Blocks:
     global PREVIEW_BTN, PREVIEW_IMAGE, QUALITY_DISPLAY
     global EXECUTE_BTN, OUTPUT_VIDEO, OUTPUT_IMAGE, EXECUTION_STATUS
     global STATUS_LOG
-    
-    ORCHESTRATOR = StudioOrchestrator()
+
+    # Only create orchestrator once to preserve state across renders
+    if ORCHESTRATOR is None:
+        ORCHESTRATOR = StudioOrchestrator()
+
+    with gradio.Row():
+        with gradio.Column(scale=1):
+            gradio.Markdown('### 1. Identity Builder')
+
+            IDENTITY_NAME_INPUT = gradio.Textbox(
+                label='Identity Name',
+                placeholder='e.g., person_a',
+                value='identity_1'
+            )
+
+            IDENTITY_FILES_INPUT = gradio.File(
+                label='Source Media (images/videos)',
+                file_count='multiple',
+                file_types=['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.mov']
+            )
+
+            with gradio.Row():
+                identity_choices = [""] + [p.id for p in get_identity_manager().source_intelligence.list_profiles()]
+                IDENTITY_RESUME_DROPDOWN = gradio.Dropdown(
+                    choices=identity_choices,
+                    label="Resume Existing Identity (Optional)",
+                    info="Continue training an existing identity"
+                )
+
+                faceset_choices = [""] + list_face_sets()
+                FACESET_DROPDOWN = gradio.Dropdown(
+                    choices=faceset_choices,
+                    label="Reuse Face Set (Optional)",
+                    info="Use pre-extracted frames from a previous session"
+                )
+
+            with gradio.Row():
+                IDENTITY_ADD_BTN = gradio.Button('Add Media', variant='secondary')
+                IDENTITY_TRAIN_BTN = gradio.Button('Train Identity', variant='primary')
+
+            IDENTITY_EPOCHS_SLIDER = gradio.Slider(
+                label='Training Epochs',
+                minimum=10,
+                maximum=500,
+                value=100,
+                step=10
+            )
+
+            IDENTITY_STATUS = gradio.Textbox(
+                label='Identity Status',
+                value='IDLE',
+                interactive=False,
+                lines=3
+            )
+
+            IDENTITY_LIST = gradio.Textbox(
+                label='Identities',
+                value='No identities yet',
+                lines=3,
+                interactive=False
+            )
+
+        with gradio.Column(scale=1):
+            gradio.Markdown('### 2. Target & Occlusion')
+
+            TARGET_INPUT = gradio.File(
+                label='Target (video/image to swap onto)',
+                file_count='single',
+                file_types=['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.mov']
+            )
+
+            TARGET_INFO = gradio.Textbox(
+                label='Target Info',
+                value='No target set',
+                interactive=False
+            )
+
+            gradio.Markdown('#### Occlusion Training (Optional)')
+
+            OCCLUSION_NAME_INPUT = gradio.Textbox(
+                label='Occlusion Model Name',
+                placeholder='e.g., xseg_custom',
+                value='occlusion_1'
+            )
+
+            OCCLUSION_EPOCHS_SLIDER = gradio.Slider(
+                label='XSeg Epochs',
+                minimum=10,
+                maximum=200,
+                value=50,
+                step=10
+            )
+
+            OCCLUSION_TRAIN_BTN = gradio.Button('Train Occlusion Model', variant='secondary')
+
+            OCCLUSION_STATUS = gradio.Textbox(
+                label='Occlusion Status',
+                value='IDLE',
+                interactive=False,
+                lines=3
+            )
+
+    with gradio.Row():
+        with gradio.Column(scale=1):
+            gradio.Markdown('### 3. Map & Execute')
+
+            with gradio.Row():
+                MAP_BTN = gradio.Button('Auto-Map Faces', variant='secondary')
+                PREVIEW_BTN = gradio.Button('Preview', variant='secondary')
+                EXECUTE_BTN = gradio.Button('Execute', variant='primary')
+
+            MAPPING_DISPLAY = gradio.Textbox(
+                label='Face Mappings',
+                value='No mappings yet',
+                lines=3,
+                interactive=False
+            )
+
+            MAPPING_STATUS = gradio.Textbox(
+                label='Mapping Status',
+                value='IDLE',
+                interactive=False,
+                lines=1
+            )
+
+            QUALITY_DISPLAY = gradio.Textbox(
+                label='Quality Scores',
+                value='',
+                lines=2,
+                interactive=False
+            )
+
+        with gradio.Column(scale=2):
+            gradio.Markdown('### Output')
+
+            PREVIEW_IMAGE = gradio.Image(
+                label='Preview',
+                visible=True,
+                interactive=False
+            )
+
+            OUTPUT_VIDEO = gradio.Video(
+                label='Output Video',
+                visible=False,
+                interactive=False
+            )
+
+            OUTPUT_IMAGE = gradio.Image(
+                label='Output Image',
+                visible=False,
+                interactive=False
+            )
+
+            EXECUTION_STATUS = gradio.Textbox(
+                label='Execution Status',
+                value='IDLE',
+                interactive=False,
+                lines=1
+            )
+
+    with gradio.Row():
+        STATUS_LOG = gradio.Textbox(
+            label='Pipeline Log',
+            value='Ready. Add identity media and target to begin.',
+            lines=8,
+            interactive=False
+        )
+
+
+def render() -> gradio.Blocks:
+    global ORCHESTRATOR
+    global IDENTITY_NAME_INPUT, IDENTITY_FILES_INPUT, IDENTITY_RESUME_DROPDOWN, FACESET_DROPDOWN
+    global IDENTITY_ADD_BTN, IDENTITY_TRAIN_BTN
+    global IDENTITY_EPOCHS_SLIDER, IDENTITY_LIST, IDENTITY_STATUS
+    global TARGET_INPUT, TARGET_INFO, EXECUTION_TARGET_INPUT
+    global OCCLUSION_NAME_INPUT, OCCLUSION_TRAIN_BTN, OCCLUSION_EPOCHS_SLIDER, OCCLUSION_STATUS
+    global IDENTITY_SELECT, OCCLUSION_SELECT
+    global MAP_BTN, MAPPING_DISPLAY, MAPPING_STATUS
+    global PREVIEW_BTN, PREVIEW_IMAGE, QUALITY_DISPLAY
+    global EXECUTE_BTN, OUTPUT_VIDEO, OUTPUT_IMAGE, EXECUTION_STATUS
+    global STATUS_LOG
+
+    # Only create orchestrator once to preserve state across renders
+    if ORCHESTRATOR is None:
+        ORCHESTRATOR = StudioOrchestrator()
     
     with gradio.Blocks(elem_id='studio_container') as layout:
 
@@ -72,7 +266,7 @@ def render() -> gradio.Blocks:
                     file_count='multiple',
                     file_types=['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.mov']
                 )
-                
+
                 with gradio.Row():
                     IDENTITY_ADD_BTN = gradio.Button('Add Media', variant='secondary')
                     IDENTITY_TRAIN_BTN = gradio.Button('Train Identity', variant='primary')
@@ -94,7 +288,7 @@ def render() -> gradio.Blocks:
                 
                 IDENTITY_LIST = gradio.Textbox(
                     label='Identities',
-                    value='No identities yet',
+                    value=get_identity_list(),
                     lines=3,
                     interactive=False
                 )
@@ -142,7 +336,26 @@ def render() -> gradio.Blocks:
         with gradio.Row():
             with gradio.Column(scale=1):
                 gradio.Markdown('### 3. Map & Execute')
-                
+
+                EXECUTION_TARGET_INPUT = gradio.File(
+                    label='Target File (Alternative Upload)',
+                    file_count='single',
+                    file_types=['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.mov']
+                )
+
+                # Add selectors for manual override
+                with gradio.Row():
+                    identity_choices = [""] + [p.id for p in get_identity_manager().source_intelligence.list_profiles()]
+                    IDENTITY_SELECT = gradio.Dropdown(choices=identity_choices, label="Select Identity")
+                    
+                    # Get trained occlusion models
+                    occlusion_choices = [""]
+                    trained_models_dir = os.path.join(os.path.dirname(__file__), '../../../.assets/models/trained')
+                    if os.path.exists(trained_models_dir):
+                        occlusion_choices += [f for f in os.listdir(trained_models_dir) if 'xseg' in f.lower() and f.endswith('.onnx')]
+                    
+                    OCCLUSION_SELECT = gradio.Dropdown(choices=occlusion_choices, label="Select Occlusion Model (Optional)")
+
                 with gradio.Row():
                     MAP_BTN = gradio.Button('Auto-Map Faces', variant='secondary')
                     PREVIEW_BTN = gradio.Button('Preview', variant='secondary')
@@ -234,6 +447,12 @@ def listen() -> None:
         inputs=[TARGET_INPUT],
         outputs=[STATUS_LOG, TARGET_INFO]
     )
+
+    EXECUTION_TARGET_INPUT.change(
+        fn=handle_set_target,
+        inputs=[EXECUTION_TARGET_INPUT],
+        outputs=[STATUS_LOG, TARGET_INFO]
+    )
     
     OCCLUSION_TRAIN_BTN.click(
         fn=handle_train_occlusion,
@@ -241,6 +460,32 @@ def listen() -> None:
         outputs=[STATUS_LOG, OCCLUSION_STATUS]
     )
     
+    # Define override handler
+    def handle_override(identity, occlusion):
+        lines = []
+        for msg, _ in ORCHESTRATOR.override_mapping(identity, occlusion):
+            lines.append(msg)
+        
+        # Update display if mapping changed
+        mapping_text = []
+        for m in ORCHESTRATOR.state.mappings:
+            mapping_text.append(f"Face {m.target_face_index} -> {m.source_identity}")
+            
+        return '\n'.join(ORCHESTRATOR.state.get_recent_logs()), '\n'.join(mapping_text)
+
+    # Listeners for manual override
+    IDENTITY_SELECT.change(
+        fn=handle_override,
+        inputs=[IDENTITY_SELECT, OCCLUSION_SELECT],
+        outputs=[STATUS_LOG, MAPPING_DISPLAY]
+    )
+    
+    OCCLUSION_SELECT.change(
+        fn=handle_override,
+        inputs=[IDENTITY_SELECT, OCCLUSION_SELECT],
+        outputs=[STATUS_LOG, MAPPING_DISPLAY]
+    )
+
     MAP_BTN.click(
         fn=handle_auto_map,
         inputs=[],

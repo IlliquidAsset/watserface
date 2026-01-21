@@ -33,7 +33,7 @@ def cli() -> None:
 	if pre_check():
 		signal.signal(signal.SIGINT, signal_exit)
 		from watserface import metadata
-		print(f"--- {metadata.get('name')} v{metadata.get('version')} ---")
+		print(f"--- {metadata.get('name')} v{metadata.get('version')} (build {metadata.get('build')}) ---")
 		program = create_program()
 
 		print("Checking args...")

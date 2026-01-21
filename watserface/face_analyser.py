@@ -16,7 +16,11 @@ from watserface.types import BoundingBox, Face, FaceLandmark5, FaceLandmarkSet, 
 def create_faces(vision_frame : VisionFrame, bounding_boxes : List[BoundingBox], face_scores : List[Score], face_landmarks_5 : List[FaceLandmark5]) -> List[Face]:
 	faces = []
 	nms_threshold = get_nms_threshold(state_manager.get_item('face_detector_model'), state_manager.get_item('face_detector_angles'))
+	from watserface import logger
+	logger.info(f"[FACE_ANALYSER] create_faces: Input boxes={len(bounding_boxes)}, scores={len(face_scores)}", __name__)
+	
 	keep_indices = apply_nms(bounding_boxes, face_scores, state_manager.get_item('face_detector_score'), nms_threshold)
+	logger.info(f"[FACE_ANALYSER] create_faces: Kept {len(keep_indices)} faces after NMS (threshold={state_manager.get_item('face_detector_score')})", __name__)
 
 	for index in keep_indices:
 		bounding_box = bounding_boxes[index]

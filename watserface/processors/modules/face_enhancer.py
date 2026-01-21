@@ -288,6 +288,10 @@ def post_process() -> None:
 
 
 def enhance_face(target_face : Face, temp_vision_frame : VisionFrame) -> VisionFrame:
+	model_options = get_model_options()
+	if model_options is None:
+		model_name = state_manager.get_item('face_enhancer_model')
+		logger.error(f"DEBUG: face_enhancer model_options is None for model_name: {model_name}", __name__)
 	model_template = get_model_options().get('template')
 	model_size = get_model_options().get('size')
 	crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark_set.get('5/68'), model_template, model_size)

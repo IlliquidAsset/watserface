@@ -140,9 +140,14 @@ def listen() -> None:
     select_fast_button = get_ui_component('smart_preview_select_fast')
     select_balanced_button = get_ui_component('smart_preview_select_balanced')
     select_quality_button = get_ui_component('smart_preview_select_quality')
-    
-    if not all([preset_selector, generate_button, preview_results, preview_status, 
-                advanced_toggle, advanced_settings]):
+
+    # Preview image components
+    preview_fast = get_ui_component('smart_preview_fast')
+    preview_balanced = get_ui_component('smart_preview_balanced')
+    preview_quality = get_ui_component('smart_preview_quality')
+
+    if not all([preset_selector, generate_button, preview_results, preview_status,
+                advanced_toggle, advanced_settings, preview_fast, preview_balanced, preview_quality]):
         return
     
     # Handle preset selection changes

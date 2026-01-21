@@ -5,6 +5,7 @@ METADATA =\
 	'name': 'WatserFace',
 	'description': 'Unified 2.5D Face Synthesis Pipeline',
 	'version': '1.0.0',
+	'build': '49fb499f',
 	'license': 'OpenRAIL-AS',
 	'author': 'IlliquidAsset (based on FaceFusion by Henry Ruhs)',
 	'url': 'https://github.com/IlliquidAsset/watserface'

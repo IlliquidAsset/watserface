@@ -123,12 +123,13 @@ def create_preview_test():
             return False
 
         # Process the frame
-        swapped_frame = face_swapper.process_frame({
+        swapped_frame, _ = face_swapper.process_frame({
             'reference_faces': None,
             'source_face': source_face,
             'source_audio_frame': numpy.zeros((1024, 2), dtype=numpy.float32),
             'source_vision_frame': target_frame.copy(),
-            'target_vision_frame': target_frame
+            'target_vision_frame': target_frame,
+            'previous_faces': None
         })
 
         print(f"   ✓ Face swap completed: output shape={swapped_frame.shape}")

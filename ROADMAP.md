@@ -21,20 +21,41 @@ WatserFace v1.0.0 establishes a production-ready, linear workflow for high-fidel
 │         ▼                   ▼                   ▼                  ▼        │
 │    [Add Media]         [Auto-mask]         [Preview]          [Export]      │
 │    [Train More]        [Annotate]          [Quality Check]    [Iterate]     │
-│                        [Depth Est.]        [Feedback Loop]                  │
+│                        [DKT Depth]         [Feedback Loop]                  │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
-                    ┌───────────────┴───────────────┐
-                    ▼                               ▼
-            ┌──────────────┐               ┌──────────────┐
-            │   2.5D       │               │  Diffusion   │
-            │   Pipeline   │               │  Inpainter   │
-            ├──────────────┤               ├──────────────┤
-            │ Normal Maps  │──────────────▶│ ControlNet   │
-            │ Depth Est.   │               │ Boundary     │
-            │ Z-Capture    │               │ Synthesis    │
-            └──────────────┘               └──────────────┘
+                                    ▼
+          ┌─────────────────────────────────────────────────────┐
+          │     INVERTED COMPOSITING PIPELINE (Phase 3)          │
+          └─────────────────────────────────────────────────────┘
+                                    │
+          ┌─────────────────────────┴─────────────────────────┐
+          │                                                    │
+          ▼                                                    ▼
+  ┌───────────────┐                                  ┌─────────────────┐
+  │  LAYER 1:     │                                  │  LAYER 3:       │
+  │  OPAQUE       │                                  │  INPAINTING     │
+  ├───────────────┤                                  ├─────────────────┤
+  │ XSeg Mask     │──────────┐           ┌──────────│ SD ControlNet   │
+  │ Swap Boundary │          │           │          │ DKT Constraints │
+  │ GAN Execution │          │           │          │ Re-Lighting     │
+  └───────────────┘          │           │          └─────────────────┘
+                             ▼           │
+                    ┌─────────────────┐  │
+                    │  LAYER 2:       │  │
+                    │  TRANSMISSION   │──┘
+                    ├─────────────────┤
+                    │ DKT Depth Map   │
+                    │ DKT Normal Map  │
+                    │ Transparent Vol │
+                    └─────────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ FINAL COMPOSITE │
+                    │ (Mayonnaise OK) │
+                    └─────────────────┘
 ```
 
 ---
@@ -99,66 +120,22 @@ Enable realistic relighting and depth-aware processing.
   - ControlNet conditioning for inpainting
   - Physics-based rendering hints
 
+## Phase 2.5: Physics-Aware Transparency (The "Mayonnaise" Layer)
+**Goal:** Solve the "transparent occlusion" problem (glass, liquid, smoke) using video diffusion priors.
+- **Technology:** Integration of "Diffusion Knows Transparency" (DKT) [Xu et al., 2025].
+- **Method:**
+  1. **Layer 1 (Opaque):** Standard XSeg mask for solid objects (hands, food).
+  2. **Layer 2 (Transmission):** DKT-derived Depth & Normal maps for transparent volumes.
+  3. **Layer 3 (Inpainting):** Stable Diffusion ControlNet pass using DKT maps as geometric constraints.
+- **Deliverable:** `watserface.processors.modules.transparency_handler.py`
+
+## Phase 3: The "Inverted" Compositing Pipeline
+**Goal:** Invert the classic swap logic. Instead of "Detect -> Swap", use "Mask -> Composite".
+- **Step 1:** **Targeting:** XSeg (Opaque) defines the strict swap boundary.
+- **Step 2:** **Coarse Swap:** GAN execution on the defined region.
+- **Step 3:** **Re-Lighting:** DKT Normals guide a low-denoise diffusion pass to restore transparent refractions over the swap.
 ---
 
-## Phase 3: Generative Inpainting (v1.0.0-rc)
-
-### Goal
-Bridge the gap between XSeg masks and identity fragments using diffusion.
-
-### The "Corndog Problem"
-When a subject interacts with objects (eating, drinking, hands on face), the mesh deforms in ways not represented in training data. Standard face swap fails at these boundaries.
-
-### Solution: Layered Composition
-
-```
-Layer Stack (bottom to top):
-┌─────────────────────────────────────┐
-│  Target Background                  │  ← Preserved
-├─────────────────────────────────────┤
-│  Swapped Face (Identity Fragment)   │  ← From face_swapper
-├─────────────────────────────────────┤
-│  Boundary Inpainting               │  ← DIFFUSION GENERATED
-├─────────────────────────────────────┤
-│  Occlusion Object                  │  ← XSeg masked, preserved
-└─────────────────────────────────────┘
-```
-
-### Implementation
-
-#### 3.1 Boundary Detection
-- Dilate XSeg mask by N pixels to create "boundary zone"
-- Extract normal map for boundary region
-- Extract depth for boundary region
-
-#### 3.2 ControlNet Conditioning
-- **Normal Map ControlNet**: Guides 3D shape of synthesized boundary
-- **Depth ControlNet**: Ensures correct depth ordering
-- **Reference Image**: Swapped face provides color/texture reference
-
-#### 3.3 Diffusion Inpainting
-- **Model**: Stable Diffusion Inpainting or SDXL Inpainting
-- **LoRA**: Optional fine-tuning on face boundary data
-- **Input**: Boundary mask + normal map + depth + reference
-- **Output**: Seamless boundary pixels
-
-#### 3.4 Temporal Consistency
-- **Optical Flow**: Warp previous frame's inpainting as prior
-- **Video Diffusion**: AnimateDiff or similar for multi-frame coherence
-
----
-
-## Phase 4: Production Hardening (v1.0.0)
-
-### Performance
-- [ ] ONNX optimization for all models
-- [ ] TensorRT/CoreML acceleration paths
-- [ ] Batch processing with memory management
-
-### Quality
-- [ ] Automated quality scoring (reject bad frames)
-- [ ] A/B comparison tools
-- [ ] Export presets (social media, broadcast, etc.)
 
 ### UX
 - [ ] Single-page Studio layout
