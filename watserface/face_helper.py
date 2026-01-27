@@ -1,13 +1,76 @@
 import math
 from functools import lru_cache
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import cv2
 import numpy
+import scipy.signal
 import scipy.spatial
 from cv2.typing import Size
 
 from watserface.types import Anchors, Angle, BoundingBox, Distance, Face, FaceDetectorModel, FaceLandmark5, FaceLandmark68, FaceLandmark478, Mask, Matrix, Points, Scale, Score, Translation, VisionFrame, WarpTemplate, WarpTemplateSet
+
+
+class TemporalBBoxStabilizer:
+	"""
+	EMA-based bounding box stabilizer to reduce frame-to-frame jitter.
+	
+	Formula: smoothed = alpha * current + (1 - alpha) * previous
+	"""
+	
+	def __init__(self, alpha: float = 0.3) -> None:
+		self._alpha = alpha
+		self._previous: Optional[numpy.ndarray] = None
+	
+	def update(self, bbox: numpy.ndarray) -> numpy.ndarray:
+		if self._previous is None:
+			self._previous = bbox.copy()
+			return bbox.copy()
+		
+		smoothed = self._alpha * bbox + (1 - self._alpha) * self._previous
+		self._previous = smoothed.copy()
+		return smoothed
+	
+	def reset(self) -> None:
+		self._previous = None
+
+
+class TemporalLandmarkStabilizer:
+	"""
+	Savitzky-Golay filter for landmark stabilization.
+	
+	Uses a sliding window to smooth landmark positions over time.
+	"""
+	
+	def __init__(self, window_size: int = 5, poly_order: int = 2) -> None:
+		self._window_size = window_size
+		self._poly_order = poly_order
+		self._buffer: List[numpy.ndarray] = []
+	
+	def update(self, landmarks: numpy.ndarray) -> numpy.ndarray:
+		self._buffer.append(landmarks.copy())
+		
+		if len(self._buffer) < self._window_size:
+			return landmarks.copy()
+		
+		if len(self._buffer) > self._window_size:
+			self._buffer.pop(0)
+		
+		stacked = numpy.stack(self._buffer, axis=0)
+		smoothed = numpy.zeros_like(landmarks)
+		
+		for i in range(landmarks.shape[0]):
+			for j in range(landmarks.shape[1]):
+				smoothed[i, j] = scipy.signal.savgol_filter(
+					stacked[:, i, j], 
+					self._window_size, 
+					self._poly_order
+				)[-1]
+		
+		return smoothed
+	
+	def reset(self) -> None:
+		self._buffer = []
 
 WARP_TEMPLATE_SET : WarpTemplateSet =\
 {
@@ -221,8 +284,13 @@ def thin_plate_spline_warp(vision_frame : VisionFrame, source_points : Points, t
 	dist_grid = numpy.linalg.norm(points_grid[:, None, :] - norm_target[None, :, :], axis=-1)
 	K_grid = _tps_kernel(dist_grid)
 	
-	# Map grid points back to source space
-	map_points_norm = K_grid @ W + points_grid @ A[1:] + A[0]
+	# Map grid points back to source space with numerical safety
+	with numpy.errstate(divide='ignore', over='ignore', invalid='ignore'):
+		map_points_norm = K_grid @ W + points_grid @ A[1:] + A[0]
+	
+	# Check for NaN/Inf and fallback to identity mapping if corrupted
+	if not numpy.isfinite(map_points_norm).all():
+		return cv2.resize(vision_frame, size)
 	
 	# Denormalize map points to pixel coordinates
 	map_x = (map_points_norm[:, 0] * scale_x).reshape(target_height, target_width).astype(numpy.float32)
@@ -374,22 +442,46 @@ def convert_to_face_landmark_5(face_landmark_68 : FaceLandmark68) -> FaceLandmar
 
 
 def convert_to_face_landmark_5_from_478(face_landmark_478 : FaceLandmark478) -> FaceLandmark5:
-	# MediaPipe indices
-	left_eye_indices = [ 33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246 ]
-	right_eye_indices = [ 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398 ]
+	# MediaPipe iris center indices for more accurate eye position
+	left_iris_center = 468
+	right_iris_center = 473
 	nose_tip_index = 1
 	left_mouth_corner_index = 61
 	right_mouth_corner_index = 291
 
+	# Use iris centers if available (indices 468-477), otherwise fall back to eye contour average
+	if face_landmark_478.shape[0] > 473:
+		left_eye = face_landmark_478[left_iris_center][:2]
+		right_eye = face_landmark_478[right_iris_center][:2]
+	else:
+		left_eye_indices = [ 33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246 ]
+		right_eye_indices = [ 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398 ]
+		left_eye = numpy.mean(face_landmark_478[left_eye_indices], axis = 0)[:2]
+		right_eye = numpy.mean(face_landmark_478[right_eye_indices], axis = 0)[:2]
+
 	face_landmark_5 = numpy.array(
 	[
-		numpy.mean(face_landmark_478[left_eye_indices], axis = 0),
-		numpy.mean(face_landmark_478[right_eye_indices], axis = 0),
-		face_landmark_478[nose_tip_index],
-		face_landmark_478[left_mouth_corner_index],
-		face_landmark_478[right_mouth_corner_index]
+		left_eye,
+		right_eye,
+		face_landmark_478[nose_tip_index][:2],
+		face_landmark_478[left_mouth_corner_index][:2],
+		face_landmark_478[right_mouth_corner_index][:2]
 	])
 	return face_landmark_5
+
+
+def extract_eye_landmarks_from_478(face_landmark_478 : FaceLandmark478) -> Tuple[Points, Points]:
+	"""
+	Extract detailed eye contour landmarks from MediaPipe 478.
+	Returns (left_eye_contour, right_eye_contour) each with 16 points.
+	"""
+	left_eye_indices = [ 33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246 ]
+	right_eye_indices = [ 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398 ]
+	
+	left_eye = face_landmark_478[left_eye_indices][:, :2]
+	right_eye = face_landmark_478[right_eye_indices][:, :2]
+	
+	return left_eye, right_eye
 
 
 def estimate_face_angle(face_landmark_68 : FaceLandmark68) -> Angle:

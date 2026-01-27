@@ -157,7 +157,7 @@ class SourceIntelligence:
         
         try:
             # Get face bounding box
-            bounding_box = face.get('bbox', [0, 0, 256, 256])
+            bounding_box = face.bounding_box
             face_width = bounding_box[2] - bounding_box[0]
             face_height = bounding_box[3] - bounding_box[1]
             face_size = (face_width, face_height)
@@ -192,22 +192,13 @@ class SourceIntelligence:
                 )
             
             # Get pose estimation (if available in face data)
-            pose_yaw = abs(face.get('yaw', 0.0))
-            pose_pitch = abs(face.get('pitch', 0.0))
-            
-            if pose_yaw > self.config.pose_yaw_max or pose_pitch > self.config.pose_pitch_max:
-                return QualityMetrics(
-                    face_size=face_size,
-                    blur_variance=blur_variance,
-                    pose_yaw=pose_yaw,
-                    pose_pitch=pose_pitch,
-                    confidence_score=0.0,
-                    is_valid=False,
-                    rejection_reason=f"Pose too extreme: yaw={pose_yaw:.1f}°, pitch={pose_pitch:.1f}°"
-                )
+            # Face namedtuple only has 'angle' (roll) typically. 
+            # We skip yaw/pitch check if not available or assume 0.
+            pose_yaw = 0.0 
+            pose_pitch = 0.0
             
             # Get confidence score
-            confidence_score = face.get('confidence', face.get('det_score', 0.5))
+            confidence_score = face.score_set.get('detector', 0.5)
             
             return QualityMetrics(
                 face_size=face_size,
@@ -246,10 +237,10 @@ class SourceIntelligence:
                     frames = self.extract_video_frames(source_path)
                     
                     for frame in frames:
-                        faces = face_analyser.get_many_faces(frame)
+                        faces = face_analyser.get_many_faces([frame])
                         if faces:
                             # Use the largest/most confident face
-                            best_face = max(faces, key=lambda f: f.get('confidence', f.get('det_score', 0)))
+                            best_face = max(faces, key=lambda f: f.score_set.get('detector', 0))
                             
                             # Assess quality
                             quality = self.assess_image_quality(frame, best_face)
@@ -257,7 +248,7 @@ class SourceIntelligence:
                             
                             if quality.is_valid:
                                 # Extract embedding
-                                face_landmark_5 = best_face.get('kps')
+                                face_landmark_5 = best_face.landmark_set.get('5')
                                 if face_landmark_5 is not None:
                                     _, normed_embedding = face_recognizer.calc_embedding(frame, face_landmark_5)
                                     all_embeddings.append(normed_embedding)
@@ -270,19 +261,22 @@ class SourceIntelligence:
                 elif is_image(source_path):
                     # Process single image
                     vision_frame = vision.read_image(source_path)
-                    faces = face_analyser.get_many_faces(vision_frame)
+                    print(f"DEBUG: Read image {source_path}, shape: {vision_frame.shape if vision_frame is not None else 'None'}")
+                    faces = face_analyser.get_many_faces([vision_frame])
+                    print(f"DEBUG: Found {len(faces)} faces")
                     
                     if faces:
                         # Use the largest/most confident face
-                        best_face = max(faces, key=lambda f: f.get('confidence', f.get('det_score', 0)))
+                        best_face = max(faces, key=lambda f: f.score_set.get('detector', 0))
                         
                         # Assess quality
                         quality = self.assess_image_quality(vision_frame, best_face)
+                        print(f"DEBUG: Quality: {quality}")
                         all_quality_metrics.append(quality)
                         
                         if quality.is_valid:
                             # Extract embedding
-                            face_landmark_5 = best_face.get('kps')
+                            face_landmark_5 = best_face.landmark_set.get('5')
                             if face_landmark_5 is not None:
                                 _, normed_embedding = face_recognizer.calc_embedding(vision_frame, face_landmark_5)
                                 all_embeddings.append(normed_embedding)
@@ -305,6 +299,8 @@ class SourceIntelligence:
                     break
                     
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 logger.error(f"Error processing source {source_path}: {str(e)}", __name__)
                 all_quality_metrics.append(QualityMetrics(
                     face_size=(0, 0),
@@ -436,8 +432,17 @@ class SourceIntelligence:
 
         profile_file = profile_dir / "profile.json"
 
+        # Custom encoder for numpy types
+        class NumPyEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
+                    return float(obj) if isinstance(obj, (np.float32, np.float64)) else int(obj)
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                return super(NumPyEncoder, self).default(obj)
+
         with open(profile_file, 'w') as f:
-            json.dump(profile.to_dict(), f, indent=2)
+            json.dump(profile.to_dict(), f, indent=2, cls=NumPyEncoder)
 
         logger.info(f"Saved identity profile to {profile_file}", __name__)
 

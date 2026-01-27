@@ -144,14 +144,14 @@ def get_model_options(model_name: str) -> ModelSet:
 
 
 def get_inference_pool() -> InferencePool:
-	model_names = [ state_manager.get_item('face_occluder_model'), state_manager.get_item('face_parser_model') ]
+	model_names = [ m for m in [ state_manager.get_item('face_occluder_model'), state_manager.get_item('face_parser_model') ] if m is not None ]
 	_, model_source_set = collect_model_downloads()
 
 	return inference_manager.get_inference_pool(__name__, model_names, model_source_set)
 
 
 def clear_inference_pool() -> None:
-	model_names = [ state_manager.get_item('face_occluder_model'), state_manager.get_item('face_parser_model') ]
+	model_names = [ m for m in [ state_manager.get_item('face_occluder_model'), state_manager.get_item('face_parser_model') ] if m is not None ]
 	inference_manager.clear_inference_pool(__name__, model_names)
 
 
@@ -285,3 +285,27 @@ def forward_parse_face(prepare_vision_frame : VisionFrame) -> Mask:
 		})[0][0]
 
 	return region_mask
+
+
+OUTER_LIP_INDICES = list(range(48, 60))
+MOUTH_INTERIOR_SHRINK_RATIO = 0.15
+
+
+def create_mouth_interior_mask(crop_vision_frame: VisionFrame, face_landmark_68: FaceLandmark68) -> Mask:
+	crop_size = crop_vision_frame.shape[:2][::-1]
+	
+	outer_lip_points = face_landmark_68[OUTER_LIP_INDICES].astype(numpy.int32)
+	
+	centroid = numpy.mean(outer_lip_points, axis=0)
+	
+	shrunk_points = centroid + (outer_lip_points - centroid) * (1 - MOUTH_INTERIOR_SHRINK_RATIO)
+	shrunk_points = shrunk_points.astype(numpy.int32)
+	
+	convex_hull = cv2.convexHull(shrunk_points)
+	
+	mouth_interior_mask = numpy.zeros(crop_size, dtype=numpy.float32)
+	cv2.fillConvexPoly(mouth_interior_mask, convex_hull, 1.0)
+	
+	mouth_interior_mask = (cv2.GaussianBlur(mouth_interior_mask.clip(0, 1), (0, 0), 5).clip(0.5, 1) - 0.5) * 2
+	
+	return mouth_interior_mask

@@ -5,8 +5,10 @@ from watserface.inpainting.boundary import (
 from watserface.inpainting.controlnet import (
     ControlNetConditioner,
     ConditioningPipeline,
+    ControlNetPipeline,
     create_controlnet_conditioner,
-    create_conditioning_pipeline
+    create_conditioning_pipeline,
+    create_controlnet_pipeline
 )
 from watserface.inpainting.diffusion import (
     DiffusionInpainter,
@@ -20,8 +22,10 @@ __all__ = [
     'create_boundary_detector',
     'ControlNetConditioner',
     'ConditioningPipeline',
+    'ControlNetPipeline',
     'create_controlnet_conditioner',
     'create_conditioning_pipeline',
+    'create_controlnet_pipeline',
     'DiffusionInpainter',
     'VideoInpainter',
     'create_diffusion_inpainter',

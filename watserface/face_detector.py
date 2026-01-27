@@ -310,7 +310,13 @@ def forward_with_yolo_face(detect_vision_frame : VisionFrame) -> Detection:
 def prepare_detect_frame(temp_vision_frame : VisionFrame, face_detector_size : str) -> VisionFrame:
 	face_detector_width, face_detector_height = unpack_resolution(face_detector_size)
 	detect_vision_frame = numpy.zeros((face_detector_height, face_detector_width, 3))
-	detect_vision_frame[:temp_vision_frame.shape[0], :temp_vision_frame.shape[1], :] = temp_vision_frame
+	try:
+		detect_vision_frame[:temp_vision_frame.shape[0], :temp_vision_frame.shape[1], :] = temp_vision_frame
+	except Exception as e:
+		print(f"DEBUG: temp_vision_frame shape: {temp_vision_frame.shape}")
+		print(f"DEBUG: detect_vision_frame shape: {detect_vision_frame.shape}")
+		print(f"DEBUG: slice shape: {detect_vision_frame[:temp_vision_frame.shape[0], :temp_vision_frame.shape[1], :].shape}")
+		raise e
 	detect_vision_frame = numpy.expand_dims(detect_vision_frame.transpose(2, 0, 1), axis = 0).astype(numpy.float32)
 	return detect_vision_frame
 

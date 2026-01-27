@@ -42,20 +42,20 @@ def get_available_models() -> List[str]:
 FACE_SWAPPER_MODEL_DROPDOWN : Optional[gradio.Dropdown] = None
 FACE_SWAPPER_REFRESH_BUTTON : Optional[gradio.Button] = None
 FACE_SWAPPER_PIXEL_BOOST_DROPDOWN : Optional[gradio.Dropdown] = None
+FACE_SWAPPER_WARP_MODE_DROPDOWN : Optional[gradio.Dropdown] = None
 
 
 def render() -> None:
 	global FACE_SWAPPER_MODEL_DROPDOWN
 	global FACE_SWAPPER_REFRESH_BUTTON
 	global FACE_SWAPPER_PIXEL_BOOST_DROPDOWN
+	global FACE_SWAPPER_WARP_MODE_DROPDOWN
 
 	has_face_swapper = 'face_swapper' in state_manager.get_item('processors')
 
-	# Only show models that are actually available
 	available_models = get_available_models()
 	current_model = state_manager.get_item('face_swapper_model')
 
-	# If current model isn't available, select first available or None
 	if current_model not in available_models:
 		current_model = available_models[0] if available_models else None
 		if current_model:
@@ -77,31 +77,41 @@ def render() -> None:
 			scale = 1,
 			elem_classes = [ 'ui_button_small' ]
 		)
-	FACE_SWAPPER_PIXEL_BOOST_DROPDOWN = gradio.Dropdown(
-		label = wording.get('uis.face_swapper_pixel_boost_dropdown'),
-		info = wording.get('help.face_swapper_pixel_boost'),
-		choices = processors_choices.face_swapper_set.get(state_manager.get_item('face_swapper_model')),
-		value = state_manager.get_item('face_swapper_pixel_boost'),
-		visible = has_face_swapper
-	)
+	with gradio.Row():
+		FACE_SWAPPER_PIXEL_BOOST_DROPDOWN = gradio.Dropdown(
+			label = wording.get('uis.face_swapper_pixel_boost_dropdown'),
+			info = wording.get('help.face_swapper_pixel_boost'),
+			choices = processors_choices.face_swapper_set.get(state_manager.get_item('face_swapper_model')),
+			value = state_manager.get_item('face_swapper_pixel_boost'),
+			visible = has_face_swapper
+		)
+		FACE_SWAPPER_WARP_MODE_DROPDOWN = gradio.Dropdown(
+			label = wording.get('uis.face_swapper_warp_mode_dropdown'),
+			info = wording.get('help.face_swapper_warp_mode'),
+			choices = [ 'affine', 'tps' ],
+			value = state_manager.get_item('face_swapper_warp_mode') or 'affine',
+			visible = has_face_swapper
+		)
 	register_ui_component('face_swapper_model_dropdown', FACE_SWAPPER_MODEL_DROPDOWN)
 	register_ui_component('face_swapper_refresh_button', FACE_SWAPPER_REFRESH_BUTTON)
 	register_ui_component('face_swapper_pixel_boost_dropdown', FACE_SWAPPER_PIXEL_BOOST_DROPDOWN)
+	register_ui_component('face_swapper_warp_mode_dropdown', FACE_SWAPPER_WARP_MODE_DROPDOWN)
 
 
 def listen() -> None:
 	FACE_SWAPPER_MODEL_DROPDOWN.change(update_face_swapper_model, inputs = FACE_SWAPPER_MODEL_DROPDOWN, outputs = [ FACE_SWAPPER_MODEL_DROPDOWN, FACE_SWAPPER_PIXEL_BOOST_DROPDOWN ])
 	FACE_SWAPPER_REFRESH_BUTTON.click(update_face_swapper_choices, outputs = [ FACE_SWAPPER_MODEL_DROPDOWN ])
 	FACE_SWAPPER_PIXEL_BOOST_DROPDOWN.change(update_face_swapper_pixel_boost, inputs = FACE_SWAPPER_PIXEL_BOOST_DROPDOWN)
+	FACE_SWAPPER_WARP_MODE_DROPDOWN.change(update_face_swapper_warp_mode, inputs = FACE_SWAPPER_WARP_MODE_DROPDOWN)
 
 	processors_checkbox_group = get_ui_component('processors_checkbox_group')
 	if processors_checkbox_group:
-		processors_checkbox_group.change(remote_update, inputs = processors_checkbox_group, outputs = [ FACE_SWAPPER_MODEL_DROPDOWN, FACE_SWAPPER_REFRESH_BUTTON, FACE_SWAPPER_PIXEL_BOOST_DROPDOWN ])
+		processors_checkbox_group.change(remote_update, inputs = processors_checkbox_group, outputs = [ FACE_SWAPPER_MODEL_DROPDOWN, FACE_SWAPPER_REFRESH_BUTTON, FACE_SWAPPER_PIXEL_BOOST_DROPDOWN, FACE_SWAPPER_WARP_MODE_DROPDOWN ])
 
 
-def remote_update(processors : List[str]) -> Tuple[gradio.Dropdown, gradio.Button, gradio.Dropdown]:
+def remote_update(processors : List[str]) -> Tuple[gradio.Dropdown, gradio.Button, gradio.Dropdown, gradio.Dropdown]:
 	has_face_swapper = 'face_swapper' in processors
-	return gradio.Dropdown(visible = has_face_swapper), gradio.Button(visible = has_face_swapper), gradio.Dropdown(visible = has_face_swapper)
+	return gradio.Dropdown(visible = has_face_swapper), gradio.Button(visible = has_face_swapper), gradio.Dropdown(visible = has_face_swapper), gradio.Dropdown(visible = has_face_swapper)
 
 
 def update_face_swapper_choices() -> gradio.Dropdown:
@@ -180,3 +190,7 @@ def update_face_swapper_model(face_swapper_model : FaceSwapperModel) -> Tuple[gr
 
 def update_face_swapper_pixel_boost(face_swapper_pixel_boost : str) -> None:
 	state_manager.set_item('face_swapper_pixel_boost', face_swapper_pixel_boost)
+
+
+def update_face_swapper_warp_mode(face_swapper_warp_mode : str) -> None:
+	state_manager.set_item('face_swapper_warp_mode', face_swapper_warp_mode)

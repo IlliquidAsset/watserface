@@ -205,6 +205,204 @@ class ConditioningPipeline:
         return blended.astype(numpy.uint8)
 
 
+class ControlNetPipeline:
+    
+    DEFAULT_DEPTH_MODEL = 'diffusers/controlnet-depth-sdxl-1.0-small'
+    DEFAULT_CANNY_MODEL = 'diffusers/controlnet-canny-sdxl-1.0'
+    DEFAULT_BASE_MODEL = 'stabilityai/stable-diffusion-xl-base-1.0'
+    
+    def __init__(
+        self,
+        device: str = 'auto',
+        controlnet_conditioning_scale: float = 0.75,
+        depth_model_id: Optional[str] = None,
+        canny_model_id: Optional[str] = None
+    ):
+        self.controlnet_conditioning_scale = controlnet_conditioning_scale
+        self.depth_model_id = depth_model_id or self.DEFAULT_DEPTH_MODEL
+        self.canny_model_id = canny_model_id or self.DEFAULT_CANNY_MODEL
+        self.loaded = False
+        self.pipeline = None
+        self.controlnet_depth = None
+        self.controlnet_canny = None
+        
+        self._resolve_device(device)
+    
+    def _resolve_device(self, device: str) -> None:
+        if device == 'auto':
+            try:
+                import torch
+                if torch.backends.mps.is_available():
+                    self.device = 'mps'
+                elif torch.cuda.is_available():
+                    self.device = 'cuda'
+                else:
+                    self.device = 'cpu'
+            except ImportError:
+                self.device = 'cpu'
+        else:
+            self.device = device
+    
+    def load(self) -> bool:
+        try:
+            import torch
+            from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline, AutoencoderKL
+            
+            dtype = torch.float16 if self.device != 'cpu' else torch.float32
+            
+            self.controlnet_depth = ControlNetModel.from_pretrained(
+                self.depth_model_id,
+                torch_dtype=dtype,
+                use_safetensors=True
+            )
+            
+            self.controlnet_canny = ControlNetModel.from_pretrained(
+                self.canny_model_id,
+                torch_dtype=dtype,
+                use_safetensors=True
+            )
+            
+            vae = AutoencoderKL.from_pretrained(
+                'madebyollin/sdxl-vae-fp16-fix',
+                torch_dtype=dtype
+            )
+            
+            self.pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+                self.DEFAULT_BASE_MODEL,
+                controlnet=[self.controlnet_depth, self.controlnet_canny],
+                vae=vae,
+                torch_dtype=dtype,
+                use_safetensors=True
+            )
+            self.pipeline.to(self.device)
+            
+            if self.device != 'cpu':
+                self.pipeline.enable_model_cpu_offload()
+            
+            self.loaded = True
+            return True
+            
+        except ImportError as e:
+            print(f'diffusers not installed: {e}')
+            return False
+        except Exception as e:
+            print(f'Failed to load ControlNet pipeline: {e}')
+            return False
+    
+    def prepare_depth_conditioning(
+        self,
+        image: numpy.ndarray,
+        target_size: Tuple[int, int] = (512, 512)
+    ) -> numpy.ndarray:
+        if image.shape[:2] != target_size[::-1]:
+            image = cv2.resize(image, target_size, interpolation=cv2.INTER_LINEAR)
+        
+        depth_map = estimate_depth(image)
+        
+        if depth_map.max() > 0:
+            depth_normalized = (depth_map / depth_map.max() * 255).astype(numpy.uint8)
+        else:
+            depth_normalized = numpy.zeros(depth_map.shape, dtype=numpy.uint8)
+        
+        if len(depth_normalized.shape) == 2:
+            depth_3ch = numpy.stack([depth_normalized] * 3, axis=-1)
+        else:
+            depth_3ch = depth_normalized
+        
+        return depth_3ch
+    
+    def prepare_canny_conditioning(
+        self,
+        image: numpy.ndarray,
+        target_size: Tuple[int, int] = (512, 512),
+        low_threshold: int = 100,
+        high_threshold: int = 200
+    ) -> numpy.ndarray:
+        if image.shape[:2] != target_size[::-1]:
+            image = cv2.resize(image, target_size, interpolation=cv2.INTER_LINEAR)
+        
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image
+        
+        edges = cv2.Canny(gray, low_threshold, high_threshold)
+        edges_3ch = numpy.stack([edges] * 3, axis=-1)
+        
+        return edges_3ch
+    
+    def process(
+        self,
+        image: numpy.ndarray,
+        prompt: str = 'high quality face, realistic skin texture',
+        negative_prompt: str = 'blurry, distorted, low quality',
+        num_inference_steps: int = 30,
+        guidance_scale: float = 7.5
+    ) -> numpy.ndarray:
+        if not self.loaded:
+            return self._fallback_process(image)
+        
+        return self._run_pipeline(
+            image, prompt, negative_prompt,
+            num_inference_steps, guidance_scale
+        )
+    
+    def _run_pipeline(
+        self,
+        image: numpy.ndarray,
+        prompt: str,
+        negative_prompt: str,
+        num_inference_steps: int,
+        guidance_scale: float
+    ) -> numpy.ndarray:
+        try:
+            import torch
+            from PIL import Image
+            
+            target_size = (512, 512)
+            
+            depth_cond = self.prepare_depth_conditioning(image, target_size)
+            canny_cond = self.prepare_canny_conditioning(image, target_size)
+            
+            depth_pil = Image.fromarray(depth_cond)
+            canny_pil = Image.fromarray(canny_cond)
+            
+            with torch.inference_mode():
+                result = self.pipeline(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    image=[depth_pil, canny_pil],
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    controlnet_conditioning_scale=[
+                        self.controlnet_conditioning_scale,
+                        self.controlnet_conditioning_scale
+                    ]
+                ).images[0]
+            
+            return numpy.array(result)
+            
+        except Exception as e:
+            print(f'Pipeline processing failed: {e}')
+            return self._fallback_process(image)
+    
+    def _fallback_process(self, image: numpy.ndarray) -> numpy.ndarray:
+        target_size = (512, 512)
+        if image.shape[:2] != target_size[::-1]:
+            return cv2.resize(image, target_size, interpolation=cv2.INTER_LINEAR)
+        return image
+
+
+def create_controlnet_pipeline(
+    device: str = 'auto',
+    controlnet_conditioning_scale: float = 0.75
+) -> ControlNetPipeline:
+    return ControlNetPipeline(
+        device=device,
+        controlnet_conditioning_scale=controlnet_conditioning_scale
+    )
+
+
 def create_controlnet_conditioner(device: str = 'auto') -> ControlNetConditioner:
     return ControlNetConditioner(device=device)
 

@@ -57,6 +57,7 @@ def clear_inference_pool(module_name : str, model_names : List[str]) -> None:
 
 
 def create_inference_session(model_path : str, execution_device_id : str, execution_providers : List[ExecutionProvider]) -> InferenceSession:
+	print(f"DEBUG: create_inference_session for path: {model_path}")
 	inference_session_providers = create_inference_session_providers(execution_device_id, execution_providers)
 	return InferenceSession(model_path, providers = inference_session_providers)
 

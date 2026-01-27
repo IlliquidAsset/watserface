@@ -14,7 +14,7 @@ from watserface.common_helper import get_first
 from watserface.download import conditional_download_hashes, conditional_download_sources, resolve_download_url
 from watserface.execution import has_execution_provider
 from watserface.face_analyser import get_average_face, get_many_faces, get_one_face
-from watserface.face_helper import paste_back, poisson_paste_back, predict_next_faces, thin_plate_spline_warp, warp_face_by_face_landmark_5
+from watserface.face_helper import paste_back, poisson_paste_back, predict_next_faces, thin_plate_spline_warp, warp_face_by_face_landmark_5, WARP_TEMPLATE_SET
 from watserface.face_masker import create_area_mask, create_box_mask, create_occlusion_mask, create_region_mask
 from watserface.face_selector import find_similar_faces, sort_and_filter_faces, sort_faces_by_order
 from watserface.face_store import clear_previous_faces, get_face_history, get_previous_faces, get_reference_faces, set_previous_faces
@@ -404,6 +404,50 @@ def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 			'size': (256, 256),
 			'mean': [ 0.5, 0.5, 0.5 ],
 			'standard_deviation': [ 0.5, 0.5, 0.5 ]
+		},
+		'hybrid_inswapper_simswap':
+		{
+			'hashes':
+			{
+				'face_swapper':
+				{
+					'url': resolve_download_url('models-3.0.0', 'inswapper_128.hash'),
+					'path': resolve_relative_path('../.assets/models/inswapper_128.hash')
+				},
+				'face_swapper_simswap':
+				{
+					'url': resolve_download_url('models-3.0.0', 'simswap_unofficial_512.hash'),
+					'path': resolve_relative_path('../.assets/models/simswap_unofficial_512.hash')
+				},
+				'embedding_converter':
+				{
+					'url': resolve_download_url('models-3.0.0', 'arcface_converter_simswap.hash'),
+					'path': resolve_relative_path('../.assets/models/arcface_converter_simswap.hash')
+				}
+			},
+			'sources':
+			{
+				'face_swapper':
+				{
+					'url': resolve_download_url('models-3.0.0', 'inswapper_128.onnx'),
+					'path': resolve_relative_path('../.assets/models/inswapper_128.onnx')
+				},
+				'face_swapper_simswap':
+				{
+					'url': resolve_download_url('models-3.0.0', 'simswap_unofficial_512.onnx'),
+					'path': resolve_relative_path('../.assets/models/simswap_unofficial_512.onnx')
+				},
+				'embedding_converter':
+				{
+					'url': resolve_download_url('models-3.0.0', 'arcface_converter_simswap.onnx'),
+					'path': resolve_relative_path('../.assets/models/arcface_converter_simswap.onnx')
+				}
+			},
+			'type': 'hybrid',
+			'template': 'arcface_112_v1',
+			'size': (512, 512),
+			'mean': [ 0.0, 0.0, 0.0 ],
+			'standard_deviation': [ 1.0, 1.0, 1.0 ]
 		}
 	}
 
@@ -421,8 +465,8 @@ def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 			if '_lora' in model_name:
 				model_set[model_name] = {
 					'hashes': {},
-					'sources': { 'face_swapper': { 'url': '', 'path': model_file_path } },
-					'type': 'inswapper',
+					'sources': { 'face_swapper': { 'url': '', 'path': os.path.abspath(model_file_path) } },
+					'type': 'lora',
 					'template': 'arcface_128',
 					'size': (128, 128),
 					'mean': [ 0.0, 0.0, 0.0 ],
@@ -455,7 +499,7 @@ def get_model_options() -> ModelOptions:
 		if os.path.exists(model_path):
 			# Create model options for LoRA model
 			return {
-				'type': 'inswapper',  # LoRA uses inswapper architecture
+				'type': 'lora',  # Changed from inswapper
 				'size': (128, 128),
 				'template': 'arcface_128',
 				'mean': [0.0, 0.0, 0.0],
@@ -497,12 +541,14 @@ def register_args(program : ArgumentParser) -> None:
 		known_args, _ = program.parse_known_args()
 		face_swapper_pixel_boost_choices = processors_choices.face_swapper_set.get(known_args.face_swapper_model)
 		group_processors.add_argument('--face-swapper-pixel-boost', help = wording.get('help.face_swapper_pixel_boost'), default = config.get_str_value('processors', 'face_swapper_pixel_boost', get_first(face_swapper_pixel_boost_choices)), choices = face_swapper_pixel_boost_choices)
-		watserface.jobs.job_store.register_step_keys([ 'face_swapper_model', 'face_swapper_pixel_boost' ])
+		group_processors.add_argument('--face-swapper-warp-mode', help = wording.get('help.face_swapper_warp_mode'), default = config.get_str_value('processors', 'face_swapper_warp_mode', 'affine'), choices = [ 'affine', 'tps' ])
+		watserface.jobs.job_store.register_step_keys([ 'face_swapper_model', 'face_swapper_pixel_boost', 'face_swapper_warp_mode' ])
 
 
 def apply_args(args : Args, apply_state_item : ApplyStateItem) -> None:
 	apply_state_item('face_swapper_model', args.get('face_swapper_model'))
 	apply_state_item('face_swapper_pixel_boost', args.get('face_swapper_pixel_boost'))
+	apply_state_item('face_swapper_warp_mode', args.get('face_swapper_warp_mode'))
 
 
 def pre_check() -> bool:
@@ -575,12 +621,46 @@ def swap_face(source_face : Face, target_face : Face, temp_vision_frame : Vision
 	model_template = model_options.get('template')
 	model_size = model_options.get('size')
 	model_type = model_options.get('type')
+	warp_mode = state_manager.get_item('face_swapper_warp_mode') or 'affine'
 
-	logger.info(f'[SWAP_FACE] Using model: {model_name} (type={model_type}, size={model_size})', __name__)
+	logger.info(f'[SWAP_FACE] Using model: {model_name} (type={model_type}, size={model_size}, warp={warp_mode})', __name__)
 
 	pixel_boost_size = unpack_resolution(state_manager.get_item('face_swapper_pixel_boost'))
 	pixel_boost_total = pixel_boost_size[0] // model_size[0]
 	crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(temp_vision_frame, target_face.landmark_set.get('5/68'), model_template, pixel_boost_size)
+	
+	tps_applied = False
+	if warp_mode == 'tps' and target_face.landmark_set.get('68') is not None:
+		try:
+			source_landmark_68 = source_face.landmark_set.get('68') if source_face.landmark_set else None
+			target_landmark_68 = target_face.landmark_set.get('68')
+			
+			if source_landmark_68 is not None and target_landmark_68 is not None:
+				target_landmark_68_crop = cv2.transform(target_landmark_68.reshape(1, -1, 2), affine_matrix).reshape(-1, 2)
+				
+				# 68-landmark key indices: jaw(0,8,16), eyebrows(17,21,22,26), eyes(36,39,42,45), nose(27,30,33), mouth(48,51,54,57)
+				key_indices = [0, 8, 16, 17, 21, 22, 26, 36, 39, 42, 45, 27, 30, 33, 48, 51, 54, 57]
+				
+				source_68_norm = source_landmark_68.copy()
+				source_bbox = numpy.array([
+					source_68_norm[:, 0].min(), source_68_norm[:, 1].min(),
+					source_68_norm[:, 0].max(), source_68_norm[:, 1].max()
+				])
+				source_center = numpy.array([(source_bbox[0] + source_bbox[2]) / 2, (source_bbox[1] + source_bbox[3]) / 2])
+				source_scale = max(source_bbox[2] - source_bbox[0], source_bbox[3] - source_bbox[1])
+				
+				crop_h, crop_w = crop_vision_frame.shape[:2]
+				source_68_normalized = (source_68_norm - source_center) / source_scale * min(crop_w, crop_h) * 0.7 + numpy.array([crop_w / 2, crop_h / 2])
+				
+				source_key = source_68_normalized[key_indices].astype(numpy.float32)
+				target_key = target_landmark_68_crop[key_indices].astype(numpy.float32)
+				
+				crop_vision_frame = thin_plate_spline_warp(crop_vision_frame, source_key, target_key, (crop_w, crop_h))
+				tps_applied = True
+				logger.info(f'[SWAP_FACE] TPS refinement applied with {len(key_indices)} landmarks', __name__)
+		except Exception as e:
+			logger.warn(f'[SWAP_FACE] TPS warp failed, falling back to affine: {e}', __name__)
+	
 	temp_vision_frames = []
 	crop_masks = []
 
@@ -630,12 +710,12 @@ def forward_swap_face(source_face : Face, crop_vision_frame : VisionFrame) -> Vi
 		face_swapper.set_providers([ watserface.choices.execution_provider_set.get('cpu') ])
 
 	for face_swapper_input in face_swapper.get_inputs():
-		if face_swapper_input.name == 'source':
+		if face_swapper_input.name in [ 'source', 'source_embedding' ]:
 			if model_type in [ 'blendswap', 'uniface' ]:
 				face_swapper_inputs[face_swapper_input.name] = prepare_source_frame(source_face)
 			else:
 				face_swapper_inputs[face_swapper_input.name] = prepare_source_embedding(source_face)
-		if face_swapper_input.name == 'target':
+		if face_swapper_input.name in [ 'target', 'target_frame' ]:
 			face_swapper_inputs[face_swapper_input.name] = crop_vision_frame
 
 	with conditional_thread_semaphore():
@@ -682,6 +762,9 @@ def prepare_source_embedding(source_face : Face) -> Embedding:
 		source_embedding = source_face.normed_embedding.reshape((1, -1))
 		return source_embedding
 
+	if model_type == 'lora':
+		return source_face.embedding.reshape((1, -1))
+
 	if model_type == 'inswapper':
 		model_path = get_model_options().get('sources').get('face_swapper').get('path')
 		model_initializer = get_static_model_initializer(model_path)
@@ -724,6 +807,192 @@ def normalize_crop_frame(crop_vision_frame : VisionFrame) -> VisionFrame:
 	crop_vision_frame = crop_vision_frame.clip(0, 1)
 	crop_vision_frame = crop_vision_frame[:, :, ::-1] * 255
 	return crop_vision_frame
+
+
+EYE_LANDMARKS_LEFT = list(range(36, 42))
+EYE_LANDMARKS_RIGHT = list(range(42, 48))
+HYBRID_BLUR_SIGMA = 3
+
+
+def create_eye_region_mask(landmarks_68 : numpy.ndarray, crop_size : Tuple[int, int]) -> numpy.ndarray:
+	mask = numpy.zeros(crop_size, dtype=numpy.float32)
+	
+	left_eye_points = landmarks_68[EYE_LANDMARKS_LEFT].astype(numpy.int32)
+	right_eye_points = landmarks_68[EYE_LANDMARKS_RIGHT].astype(numpy.int32)
+	
+	left_hull = cv2.convexHull(left_eye_points)
+	right_hull = cv2.convexHull(right_eye_points)
+	
+	expand_factor = 1.5
+	left_center = left_eye_points.mean(axis=0)
+	right_center = right_eye_points.mean(axis=0)
+	
+	left_expanded = ((left_hull.reshape(-1, 2) - left_center) * expand_factor + left_center).astype(numpy.int32)
+	right_expanded = ((right_hull.reshape(-1, 2) - right_center) * expand_factor + right_center).astype(numpy.int32)
+	
+	cv2.fillConvexPoly(mask, left_expanded, 1.0)
+	cv2.fillConvexPoly(mask, right_expanded, 1.0)
+	
+	blur_size = int(HYBRID_BLUR_SIGMA * 6) | 1
+	mask = cv2.GaussianBlur(mask, (blur_size, blur_size), HYBRID_BLUR_SIGMA)
+	
+	return mask.clip(0, 1).astype(numpy.float32)
+
+
+def blend_hybrid_results(inswapper_result : VisionFrame, simswap_result : VisionFrame, eye_mask : numpy.ndarray) -> VisionFrame:
+	if eye_mask.ndim == 2:
+		eye_mask = eye_mask[:, :, numpy.newaxis]
+	
+	result = inswapper_result * eye_mask + simswap_result * (1 - eye_mask)
+	return result.astype(numpy.float32)
+
+
+def swap_face_hybrid(source_face : Face, target_face : Face, temp_vision_frame : VisionFrame) -> VisionFrame:
+	from watserface import logger
+	
+	model_options = get_model_options()
+	model_template = model_options.get('template')
+	pixel_boost_size = unpack_resolution(state_manager.get_item('face_swapper_pixel_boost'))
+	
+	crop_vision_frame, affine_matrix = warp_face_by_face_landmark_5(
+		temp_vision_frame, target_face.landmark_set.get('5/68'), model_template, pixel_boost_size
+	)
+	
+	logger.info('[HYBRID_SWAP] Running InSwapper 128 for eye regions...', __name__)
+	inswapper_result = run_inswapper_on_crop(source_face, crop_vision_frame.copy())
+	
+	logger.info('[HYBRID_SWAP] Running SimSwap 512 for face texture...', __name__)
+	simswap_result = run_simswap_on_crop(source_face, crop_vision_frame.copy())
+	
+	face_landmark_68 = target_face.landmark_set.get('68')
+	if face_landmark_68 is not None:
+		transformed_landmarks = cv2.transform(face_landmark_68.reshape(1, -1, 2), affine_matrix).reshape(-1, 2)
+		eye_mask = create_eye_region_mask(transformed_landmarks, crop_vision_frame.shape[:2])
+	else:
+		logger.warn('[HYBRID_SWAP] No 68-point landmarks, using center eye region estimate', __name__)
+		h, w = crop_vision_frame.shape[:2]
+		eye_mask = numpy.zeros((h, w), dtype=numpy.float32)
+		eye_y = int(h * 0.35)
+		eye_h = int(h * 0.15)
+		left_x, left_w = int(w * 0.25), int(w * 0.2)
+		right_x, right_w = int(w * 0.55), int(w * 0.2)
+		eye_mask[eye_y:eye_y+eye_h, left_x:left_x+left_w] = 1.0
+		eye_mask[eye_y:eye_y+eye_h, right_x:right_x+right_w] = 1.0
+		blur_size = int(HYBRID_BLUR_SIGMA * 6) | 1
+		eye_mask = cv2.GaussianBlur(eye_mask, (blur_size, blur_size), HYBRID_BLUR_SIGMA)
+	
+	logger.info('[HYBRID_SWAP] Blending eye regions (InSwapper) with face (SimSwap)...', __name__)
+	blended_crop = blend_hybrid_results(inswapper_result, simswap_result, eye_mask)
+	
+	face_mask_types = state_manager.get_item('face_mask_types')
+	crop_masks = []
+	
+	if 'box' in face_mask_types:
+		box_mask = create_box_mask(blended_crop, state_manager.get_item('face_mask_blur'), state_manager.get_item('face_mask_padding'))
+		crop_masks.append(box_mask)
+	
+	if 'occlusion' in face_mask_types:
+		occlusion_mask = create_occlusion_mask(blended_crop)
+		crop_masks.append(occlusion_mask)
+	
+	if 'region' in face_mask_types:
+		region_mask = create_region_mask(blended_crop, state_manager.get_item('face_mask_regions'))
+		crop_masks.append(region_mask)
+	
+	crop_mask = numpy.minimum.reduce(crop_masks).clip(0, 1) if crop_masks else numpy.ones(blended_crop.shape[:2], dtype=numpy.float32)
+	temp_vision_frame = paste_back(temp_vision_frame, blended_crop, crop_mask, affine_matrix)
+	
+	logger.info('[HYBRID_SWAP] Hybrid face swap complete', __name__)
+	return temp_vision_frame
+
+
+def run_inswapper_on_crop(source_face : Face, crop_vision_frame : VisionFrame) -> VisionFrame:
+	inswapper_options = create_static_model_set('full').get('inswapper_128')
+	inswapper_size = inswapper_options.get('size')
+	inswapper_mean = inswapper_options.get('mean')
+	inswapper_std = inswapper_options.get('standard_deviation')
+	
+	original_size = crop_vision_frame.shape[:2][::-1]
+	resized_frame = cv2.resize(crop_vision_frame, inswapper_size)
+	
+	prepared = resized_frame[:, :, ::-1] / 255.0
+	prepared = (prepared - inswapper_mean) / inswapper_std
+	prepared = prepared.transpose(2, 0, 1)
+	prepared = numpy.expand_dims(prepared, axis=0).astype(numpy.float32)
+	
+	model_path = inswapper_options.get('sources').get('face_swapper').get('path')
+	model_initializer = get_static_model_initializer(model_path)
+	source_embedding = source_face.embedding.reshape((1, -1))
+	source_embedding = numpy.dot(source_embedding, model_initializer) / numpy.linalg.norm(source_embedding)
+	
+	face_swapper = inference_manager.get_inference_pool(__name__, ['inswapper_128'], inswapper_options.get('sources')).get('inswapper_128')
+	
+	face_swapper_inputs = {}
+	for inp in face_swapper.get_inputs():
+		if inp.name in ['source', 'source_embedding']:
+			face_swapper_inputs[inp.name] = source_embedding
+		if inp.name in ['target', 'target_frame']:
+			face_swapper_inputs[inp.name] = prepared
+	
+	with conditional_thread_semaphore():
+		result = face_swapper.run(None, face_swapper_inputs)[0][0]
+	
+	result = result.transpose(1, 2, 0)
+	result = result.clip(0, 1)
+	result = result[:, :, ::-1] * 255
+	result = cv2.resize(result, original_size)
+	
+	return result.astype(numpy.float32)
+
+
+def run_simswap_on_crop(source_face : Face, crop_vision_frame : VisionFrame) -> VisionFrame:
+	simswap_options = create_static_model_set('full').get('simswap_unofficial_512')
+	simswap_size = simswap_options.get('size')
+	simswap_mean = simswap_options.get('mean')
+	simswap_std = simswap_options.get('standard_deviation')
+	
+	original_size = crop_vision_frame.shape[:2][::-1]
+	resized_frame = cv2.resize(crop_vision_frame, simswap_size)
+	
+	prepared = resized_frame[:, :, ::-1] / 255.0
+	prepared = (prepared - simswap_mean) / simswap_std
+	prepared = prepared.transpose(2, 0, 1)
+	prepared = numpy.expand_dims(prepared, axis=0).astype(numpy.float32)
+	
+	embedding = source_face.embedding.reshape(-1, 512)
+	embedding_converter = inference_manager.get_inference_pool(
+		__name__, ['arcface_converter_simswap'], 
+		{'arcface_converter_simswap': simswap_options.get('sources').get('embedding_converter')}
+	).get('arcface_converter_simswap')
+	
+	with conditional_thread_semaphore():
+		embedding = embedding_converter.run(None, {'input': embedding})[0]
+	
+	embedding = embedding.ravel()
+	normed_embedding = embedding / numpy.linalg.norm(embedding)
+	source_embedding = normed_embedding.reshape(1, -1)
+	
+	face_swapper = inference_manager.get_inference_pool(
+		__name__, ['simswap_unofficial_512'], 
+		{'simswap_unofficial_512': simswap_options.get('sources').get('face_swapper')}
+	).get('simswap_unofficial_512')
+	
+	face_swapper_inputs = {}
+	for inp in face_swapper.get_inputs():
+		if inp.name in ['source', 'source_embedding']:
+			face_swapper_inputs[inp.name] = source_embedding
+		if inp.name in ['target', 'target_frame']:
+			face_swapper_inputs[inp.name] = prepared
+	
+	with conditional_thread_semaphore():
+		result = face_swapper.run(None, face_swapper_inputs)[0][0]
+	
+	result = result.transpose(1, 2, 0)
+	result = result.clip(0, 1)
+	result = result[:, :, ::-1] * 255
+	result = cv2.resize(result, original_size)
+	
+	return result.astype(numpy.float32)
 
 
 def get_reference_frame(source_face : Face, target_face : Face, temp_vision_frame : VisionFrame) -> VisionFrame:
